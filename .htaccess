@@ -1,0 +1,15 @@
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [L]
+
+<FilesMatch "\.(sqlite|sqlite3|db|sql|env)$">
+    Require all denied
+</FilesMatch>
+
+<DirectoryMatch "^/.*/\.git">
+    Require all denied
+</DirectoryMatch>
+
+<Files "test.php">
+    Require all denied
+</Files>
