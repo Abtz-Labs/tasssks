@@ -1008,6 +1008,45 @@ assert_true(array_key_exists('title', $card1), 'title field exists in card respo
 assert_true(array_key_exists('description', $card1), 'description field exists in card response');
 assert_true(array_key_exists('id', $card1), 'id field exists in card response (used for data-id)');
 
+// ─── WYSIWYG Editor ──────────────────────────────────────
+section('WYSIWYG Editor');
+
+// Fetch the HTML page to verify CDN includes and editor markup
+$ch = curl_init("$BASE/");
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_COOKIEFILE => $cookieFile]);
+$html = curl_exec($ch);
+curl_close($ch);
+
+// CDN includes
+assert_true(str_contains($html, 'quill@2.0.3/dist/quill.snow.css'), 'Quill CSS CDN included');
+assert_true(str_contains($html, 'quill@2.0.3/dist/quill.js'), 'Quill JS CDN included');
+assert_true(str_contains($html, 'turndown@7.2.0/dist/turndown.js'), 'Turndown CDN included');
+assert_true(str_contains($html, 'turndown-plugin-gfm'), 'Turndown GFM plugin CDN included');
+
+// JS helpers and config
+assert_true(str_contains($html, '_initQuill('), 'Quill init helper defined');
+assert_true(str_contains($html, '_quillToMarkdown('), 'Quill-to-Markdown helper defined');
+assert_true(str_contains($html, 'new TurndownService('), 'TurndownService instantiated');
+assert_true(str_contains($html, 'DividerBlot'), 'Custom HR blot registered');
+assert_true(str_contains($html, 'QUILL_TOOLBAR_FULL'), 'Full toolbar config defined');
+assert_true(str_contains($html, 'QUILL_TOOLBAR_COMPACT'), 'Compact toolbar config defined');
+
+// marked.js configured for target="_blank"
+assert_true(str_contains($html, 'target="_blank"') || str_contains($html, "target=\"_blank\""), 'marked.js link renderer adds target=_blank');
+assert_true(str_contains($html, 'noopener noreferrer'), 'Links get rel=noopener noreferrer');
+
+// Editor containers (Quill mounts on divs, not textareas)
+assert_true(str_contains($html, 'id="new-card-desc"'), 'New card description editor container exists');
+assert_true(str_contains($html, 'id="new-comment"'), 'New comment editor container exists');
+assert_true(str_contains($html, 'quill-wrap'), 'Quill wrapper class used');
+assert_true(str_contains($html, 'quill-wrap compact'), 'Compact Quill wrapper for comments');
+
+// DOMPurify allows target attr
+assert_true(str_contains($html, 'ADD_ATTR'), 'DOMPurify configured to allow target attribute');
+
+// Comment raw data attribute for edit roundtrip
+assert_true(str_contains($html, 'data-raw'), 'Comments store raw markdown in data-raw attribute');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . str_repeat('=', 40) . "\n";
 echo "Results: \033[32m$passed passed\033[0m, " . ($failed ? "\033[31m$failed failed\033[0m" : "0 failed") . "\n";

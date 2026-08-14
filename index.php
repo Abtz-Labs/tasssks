@@ -2460,6 +2460,10 @@ $isGuestRequest = isset($_GET['guest']);
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
     <style>
 :root {
     --bg: #f8fafc;
@@ -2588,6 +2592,19 @@ input:focus, textarea:focus, select:focus {
 }
 
 textarea { resize: vertical; min-height: 100px; height: auto; padding: 10px 12px; }
+
+.quill-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.quill-wrap .ql-toolbar.ql-snow { border: none; background: transparent; padding: 4px 8px; }
+.quill-wrap .ql-toolbar .ql-formats { margin-right: 8px; }
+.quill-wrap .ql-toolbar button { width: 26px; height: 26px; padding: 3px; }
+.quill-wrap .ql-toolbar button svg { width: 16px; height: 16px; }
+.quill-wrap .ql-toolbar .ql-picker-label { padding: 2px 4px; }
+.quill-wrap .ql-container.ql-snow { border: none; font-size: 14px; }
+.quill-wrap .ql-editor { min-height: 120px; max-height: 300px; overflow-y: auto; padding: 10px 12px; }
+.quill-wrap.compact .ql-editor { min-height: 50px; max-height: 160px; }
+.quill-wrap.compact .ql-toolbar.ql-snow { padding: 2px 6px; }
+.quill-wrap.compact .ql-toolbar button { width: 24px; height: 24px; }
+.quill-wrap .ql-editor.ql-blank::before { color: var(--text-light); font-style: normal; left: 12px; }
 
 label { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; }
 .form-group { margin-bottom: 16px; }
@@ -2822,9 +2839,10 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
     padding: 16px 24px;
     border-top: 1px solid var(--border);
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 8px;
 }
+.modal-footer:has(:only-child) { justify-content: flex-end; }
 
 /* Card detail */
 .card-detail-section { margin-bottom: 24px; }
@@ -3180,6 +3198,134 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 
 <script>
 let CSRF_TOKEN = '<?= $_SESSION['csrf_token'] ?>';
+
+// Configure marked.js: links open in new tab
+marked.use({
+    renderer: {
+        link({ href, title, tokens }) {
+            const text = this.parser.parseInline(tokens);
+            const titleAttr = title ? ` title="${title}"` : '';
+            return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
+        }
+    }
+});
+
+// Turndown service for HTML → Markdown conversion
+const _turndown = new TurndownService({ headingStyle: 'atx', hr: '---', bulletListMarker: '-', codeBlockStyle: 'fenced' });
+_turndown.use(turndownPluginGfm.gfm);
+
+// Custom Quill blot for horizontal rule
+const BlockEmbed = Quill.import('blots/block/embed');
+class DividerBlot extends BlockEmbed {}
+DividerBlot.blotName = 'divider';
+DividerBlot.tagName = 'hr';
+Quill.register(DividerBlot);
+
+// Markdown shortcuts module: converts markdown syntax to rich text as you type
+class MarkdownShortcuts {
+    constructor(quill) {
+        this.quill = quill;
+        quill.on('text-change', (delta, _old, source) => {
+            if (source !== 'user') return;
+            const lastOp = delta.ops?.[delta.ops.length - 1];
+            if (!lastOp?.insert || typeof lastOp.insert !== 'string') return;
+            setTimeout(() => this.check(), 0);
+        });
+    }
+
+    check() {
+        const sel = this.quill.getSelection();
+        if (!sel) return;
+        const [line, offset] = this.quill.getLine(sel.index);
+        if (!line) return;
+        const text = line.domNode.textContent.substring(0, offset);
+        const lineStart = sel.index - offset;
+
+        // Block patterns (triggered by space after prefix)
+        if (text.length >= 2 && text[text.length - 1] === ' ') {
+            const prefix = text.slice(0, -1);
+            if (prefix === '>') {
+                this.quill.deleteText(lineStart, text.length);
+                this.quill.formatLine(lineStart, 1, 'blockquote', true);
+                return;
+            }
+            if (prefix === '-' || prefix === '*') {
+                this.quill.deleteText(lineStart, text.length);
+                this.quill.formatLine(lineStart, 1, 'list', 'bullet');
+                return;
+            }
+            if (/^\d+\.$/.test(prefix)) {
+                this.quill.deleteText(lineStart, text.length);
+                this.quill.formatLine(lineStart, 1, 'list', 'ordered');
+                return;
+            }
+        }
+
+        // HR: --- at start of line
+        if (text === '---') {
+            this.quill.deleteText(lineStart, 3);
+            this.quill.insertEmbed(lineStart, 'divider', true, Quill.sources.USER);
+            this.quill.setSelection(lineStart + 1);
+            return;
+        }
+
+        // Inline patterns
+        let m;
+        if ((m = text.match(/!\[([^\]]*)\]\(([^)]+)\)$/))) {
+            const start = sel.index - m[0].length;
+            this.quill.deleteText(start, m[0].length);
+            this.quill.insertEmbed(start, 'image', m[2], Quill.sources.USER);
+            this.quill.setSelection(start + 1);
+        } else if ((m = text.match(/\[([^\]]+)\]\(([^)]+)\)$/))) {
+            this.replace(sel.index, m[0], m[1], 'link', m[2]);
+        } else if ((m = text.match(/\*\*(.+?)\*\*$/))) {
+            this.replace(sel.index, m[0], m[1], 'bold', true);
+        } else if ((m = text.match(/(?<!\*)\*([^*]+?)\*$/))) {
+            this.replace(sel.index, m[0], m[1], 'italic', true);
+        } else if ((m = text.match(/~~(.+?)~~$/))) {
+            this.replace(sel.index, m[0], m[1], 'strike', true);
+        }
+    }
+
+    replace(cursor, full, content, format, value) {
+        const start = cursor - full.length;
+        this.quill.deleteText(start, full.length);
+        this.quill.insertText(start, content, format, value);
+        this.quill.setSelection(start + content.length);
+        this.quill.format(format, false);
+    }
+}
+Quill.register('modules/markdownShortcuts', MarkdownShortcuts);
+
+const QUILL_TOOLBAR_FULL = [
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ list: 'bullet' }, { list: 'ordered' }]
+];
+const QUILL_TOOLBAR_COMPACT = QUILL_TOOLBAR_FULL;
+
+function _initQuill(selector, opts = {}) {
+    const toolbar = opts.compact ? QUILL_TOOLBAR_COMPACT : QUILL_TOOLBAR_FULL;
+    const quill = new Quill(selector, {
+        theme: 'snow',
+        placeholder: opts.placeholder || '',
+        modules: {
+            toolbar: toolbar,
+            markdownShortcuts: true
+        }
+    });
+    if (opts.html) {
+        quill.clipboard.dangerouslyPasteHTML(opts.html);
+        quill.setSelection(0, 0);
+    }
+    return quill;
+}
+
+function _quillToMarkdown(quill) {
+    const html = quill.root.innerHTML;
+    if (!html || html === '<p><br></p>') return '';
+    return _turndown.turndown(html);
+}
+
 const App = {
     currentProject: null,
     projects: [],
@@ -3193,6 +3339,8 @@ const App = {
     unreadCounts: {},
     appName: '<?= APP_NAME ?>',
     _pendingTagCardId: null,
+    _quill: null,
+    _quillComment: null,
 
     init() {
         const params = new URLSearchParams(window.location.search);
@@ -3458,6 +3606,7 @@ const App = {
                         <svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                         Settings
                     </button>` : ''}
+                    <div class="dropdown-divider"></div>
                     <button class="dropdown-item" onclick="App.showHelp();$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                         Help
@@ -3660,15 +3809,19 @@ const App = {
     showAddCard(columnId) {
         this.openModal('New Card', `
             <div class="form-group"><label>Title</label><input type="text" id="new-card-title" placeholder="Card title"></div>
-            <div class="form-group"><label>Description (Markdown)</label><textarea id="new-card-desc" placeholder="Optional description..."></textarea></div>
+            <div class="form-group"><label>Description</label><div class="quill-wrap"><div id="new-card-desc"></div></div></div>
         `, `<button class="btn btn-primary" onclick="App.createCard(${columnId})">Add Card</button>`);
-        setTimeout(() => $('#new-card-title').focus(), 100);
+        setTimeout(() => {
+            this._quill = _initQuill('#new-card-desc', { placeholder: 'Optional description...' });
+            $('#new-card-title').focus();
+        }, 50);
     },
 
     createCard(columnId) {
         const title = $('#new-card-title').val().trim();
         if (!title) return;
-        this.api('create_card', { column_id: columnId, title, description: $('#new-card-desc').val() }, 'POST').done(() => { this.closeModal(); this.refreshBoard(); });
+        const description = this._quill ? _quillToMarkdown(this._quill) : '';
+        this.api('create_card', { column_id: columnId, title, description }, 'POST').done(() => { this.closeModal(); this.refreshBoard(); });
     },
 
     openCard(cardId) {
@@ -3680,7 +3833,7 @@ const App = {
             history.replaceState(null, '', `#project/${this.currentProject.id}/card/${cardId}`);
             this._navigating = false;
         }
-        const descHtml = card.description ? DOMPurify.sanitize(marked.parse(card.description)) : '<em style="color:var(--text-light)">No description</em>';
+        const descHtml = card.description ? DOMPurify.sanitize(marked.parse(card.description), { ADD_ATTR: ['target'] }) : '<em style="color:var(--text-light)">No description</em>';
         const assignedTags = (card.tags || []);
         const tagsHtml = assignedTags.map(t =>
             `<span class="tag" style="background:${t.color};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
@@ -3734,9 +3887,11 @@ const App = {
             </div>
             <div class="card-detail-section">
                 <h4>Comments</h4>
-                <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
-                    <textarea id="new-comment" placeholder="Write a comment (Markdown)" style="min-height:38px;flex:1"></textarea>
-                    <button class="btn btn-primary btn-sm" onclick="App.addComment(${cardId})">Comment</button>
+                <div style="margin-bottom:12px">
+                    <div class="quill-wrap compact"><div id="new-comment"></div></div>
+                    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+                        <button class="btn btn-primary btn-sm" onclick="App.addComment(${cardId})">Comment</button>
+                    </div>
                 </div>
                 <div id="card-comments">Loading...</div>
             </div>
@@ -3746,6 +3901,7 @@ const App = {
         ` : '';
         const titleHtml = this.esc(card.title) + (!this.isGuest ? ` <button class="btn btn-ghost btn-sm" style="height:22px;padding:0 8px;font-size:11px;vertical-align:middle" onclick="App.editCardTitle(${cardId})">Edit</button>` : '');
         this.openModal(titleHtml, body, footer);
+        setTimeout(() => { this._quillComment = _initQuill('#new-comment', { compact: true, placeholder: 'Write a comment...' }); }, 50);
         this.loadComments(cardId);
         this.api('mark_comments_seen', { card_id: cardId }, 'POST').done(() => {
             delete this.unreadCounts[cardId];
@@ -3783,16 +3939,24 @@ const App = {
 
     editCardDescription(cardId) {
         const card = this.cards.find(c => c.id == cardId);
+        const html = card.description ? marked.parse(card.description) : '';
         this.openModal('Edit Description', `
-            <div class="form-group"><textarea id="edit-card-desc" rows="10">${this.esc(card.description || '')}</textarea></div>
+            <div class="form-group"><div class="quill-wrap"><div id="edit-card-desc"></div></div></div>
         `, `
             <button class="btn btn-ghost" onclick="App.closeModal();setTimeout(()=>App.openCard(${cardId}),100)">Cancel</button>
             <button class="btn btn-primary" onclick="App.saveCardDescription(${cardId})">Save</button>
         `);
+        setTimeout(() => {
+            this._quill = _initQuill('#edit-card-desc', { html });
+            const len = this._quill.getLength();
+            this._quill.setSelection(len, 0);
+            this._quill.focus();
+        }, 50);
     },
 
     saveCardDescription(cardId) {
-        this.api('update_card', { id: cardId, description: $('#edit-card-desc').val() }, 'POST').done(() => { this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200); });
+        const description = this._quill ? _quillToMarkdown(this._quill) : '';
+        this.api('update_card', { id: cardId, description }, 'POST').done(() => { this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200); });
     },
 
     deleteCard(cardId) {
@@ -3881,7 +4045,7 @@ const App = {
                             <span class="comment-date">${c.created_at}</span>
                         </span>
                     </div>
-                    <div class="comment-body markdown-body">${DOMPurify.sanitize(marked.parse(c.content))}</div>
+                    <div class="comment-body markdown-body" data-raw="${encodeURIComponent(c.content)}">${DOMPurify.sanitize(marked.parse(c.content), { ADD_ATTR: ['target'] })}</div>
                 </div>`;
             }).join('') : '<p style="color:var(--text-light);font-size:13px">No comments yet.</p>';
             $('#card-comments').html(html);
@@ -3889,10 +4053,11 @@ const App = {
     },
 
     addComment(cardId) {
-        const content = $('#new-comment').val().trim();
+        if (!this._quillComment) return;
+        const content = _quillToMarkdown(this._quillComment);
         if (!content) return;
         this.api('create_comment', { card_id: cardId, content }, 'POST').done(() => {
-            $('#new-comment').val('');
+            this._quillComment.setText('');
             this.loadComments(cardId);
         });
     },
@@ -3901,10 +4066,26 @@ const App = {
         const commentEl = $(`#card-comments .comment`).filter(function() {
             return $(this).find('[onclick*="editComment(' + commentId + '"]').length > 0;
         });
-        const currentContent = commentEl.find('.comment-body').text().trim();
-        this.promptInput('Edit Comment', 'Comment (Markdown)', currentContent, (newContent) => {
-            this.api('update_comment', { id: commentId, content: newContent }, 'POST').done(() => this.openCard(cardId));
-        });
+        const raw = decodeURIComponent(commentEl.find('.comment-body').attr('data-raw') || '');
+        const html = raw ? marked.parse(raw) : '';
+        this.openModal('Edit Comment', `
+            <div class="form-group"><div class="quill-wrap"><div id="edit-comment-editor"></div></div></div>
+        `, `
+            <button class="btn btn-ghost" onclick="App.closeModal();setTimeout(()=>App.openCard(${cardId}),100)">Cancel</button>
+            <button class="btn btn-primary" id="save-edit-comment-btn">Save</button>
+        `);
+        setTimeout(() => {
+            this._quill = _initQuill('#edit-comment-editor', { html });
+            const len = this._quill.getLength();
+            this._quill.setSelection(len, 0);
+            this._quill.focus();
+            $('#save-edit-comment-btn').off('click').on('click', () => {
+                const content = _quillToMarkdown(this._quill);
+                if (content) {
+                    this.api('update_comment', { id: commentId, content }, 'POST').done(() => { this.closeModal(); setTimeout(() => this.openCard(cardId), 100); });
+                }
+            });
+        }, 50);
     },
 
     deleteComment(commentId, cardId) {
@@ -3978,6 +4159,7 @@ const App = {
                     <p id="account-success" class="hidden" style="color:var(--success);font-size:13px;margin-bottom:12px">Saved!</p>
                 </form>
             `, `<button class="btn btn-primary" onclick="App.saveAccount()">Save</button>`);
+            setTimeout(() => $('#account-name').focus(), 50);
         });
     },
 
@@ -4169,6 +4351,7 @@ const App = {
                     ${smtp.last_digest_at ? `<p style="font-size:11px;color:var(--text-light);margin-top:6px">Last digest run: <strong>${smtp.last_digest_at}</strong></p>` : '<p style="font-size:11px;color:var(--text-light);margin-top:6px">Digest has not run yet.</p>'}
                 </div>
             `, '');
+            setTimeout(() => $('#app-name').focus(), 50);
         });
     },
 
@@ -4309,6 +4492,7 @@ const App = {
                 </div>
                 </div>
             `, '');
+            setTimeout(() => $('#project-name').focus(), 50);
         });
     },
 
@@ -4570,6 +4754,8 @@ const App = {
     closeModal(event) {
         if (event && event.target !== event.currentTarget) return;
         $('#modal-overlay').removeClass('active');
+        this._quill = null;
+        this._quillComment = null;
         if (this._openCardId && this.currentProject) {
             this._navigating = true;
             history.replaceState(null, '', `#project/${this.currentProject.id}`);
@@ -4667,7 +4853,12 @@ const App = {
     escAttr(str) { return this.esc(str).replace(/'/g, '&#39;'); }
 };
 
-$(document).on('keydown', e => { if (e.key === 'Escape') App.closeModal(); });
+$(document).on('keydown', e => {
+    if (e.key === 'Escape' && $('#modal-overlay').hasClass('active')) {
+        const $cancel = $('#modal-footer .btn-ghost:contains("Cancel")');
+        if ($cancel.length) { $cancel.first().click(); } else { App.closeModal(); }
+    }
+});
 $(document).on('keydown', '#login-email, #login-password', e => { if (e.key === 'Enter') App.login(); });
 $(document).on('keydown', '#setup-name, #setup-email, #setup-password', e => { if (e.key === 'Enter') App.setup(); });
 $(App.init.bind(App));
