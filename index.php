@@ -2843,6 +2843,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
     gap: 8px;
 }
 .modal-footer:has(:only-child) { justify-content: flex-end; }
+.modal-footer:empty { border-top: none; padding: 0; }
 
 /* Card detail */
 .card-detail-section { margin-bottom: 24px; }
