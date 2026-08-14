@@ -3002,6 +3002,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
     background: none;
     width: 100%;
     text-align: left;
+    text-decoration: none;
 }
 .dropdown-item:hover { background: var(--surface-hover); }
 .dropdown-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
@@ -3612,9 +3613,13 @@ const App = {
                     </button>` : ''}
                     <div class="dropdown-divider"></div>
                     <button class="dropdown-item" onclick="App.showHelp();$('.dropdown-menu').removeClass('open')">
-                        <svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <svg viewBox="0 0 24 24" stroke-width="2"><path d="M3 11h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H3a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z"/><path d="M21 11h-1a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1z"/><path d="M4 11V8a8 8 0 0 1 16 0v3"/><path d="M18 18a4 4 0 0 1-4 4h-2"/></svg>
                         Help
                     </button>
+                    <a class="dropdown-item" href="https://github.com/rogeriotaques/tasssks/issues" target="_blank" rel="noopener noreferrer" onclick="$('.dropdown-menu').removeClass('open')">
+                        <svg viewBox="0 0 24 24" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        Report a Bug
+                    </a>
                     <div class="dropdown-divider"></div>
                     <button class="dropdown-item dropdown-item--danger" onclick="App.logout()">
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
