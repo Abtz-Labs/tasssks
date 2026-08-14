@@ -3012,6 +3012,62 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 .app-footer a:hover { color: var(--primary); }
 .app-footer p+p { margin-top: 8px; }
 
+/* Search */
+.search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.search-wrapper input {
+    width: 260px;
+    height: 34px;
+    padding: 0 72px 0 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color var(--transition), width var(--transition);
+}
+.search-wrapper input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    width: 320px;
+}
+.search-wrapper .search-icon {
+    position: absolute;
+    left: 10px;
+    pointer-events: none;
+    color: var(--text-light);
+    display: flex;
+}
+.search-wrapper .search-count {
+    position: absolute;
+    right: 28px;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--surface-hover);
+    padding: 2px 7px;
+    border-radius: 10px;
+    white-space: nowrap;
+    pointer-events: none;
+    display: none;
+}
+.search-wrapper .search-clear {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-light);
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px;
+    display: none;
+}
+.search-wrapper .search-clear:hover { color: var(--text); }
+
 /* Utilities */
 .hidden { display: none !important; }
 .mt-2 { margin-top: 8px; }
@@ -3427,6 +3483,12 @@ const App = {
                 <strong>${this.esc(this.currentProject.name)}</strong>
             `);
             let actions = '';
+            actions += `<div class="search-wrapper">
+                <span class="search-icon"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+                <input type="text" id="board-search" placeholder="Search cards..." oninput="App.searchCards(this.value)">
+                <span class="search-count" id="search-count"></span>
+                <button class="search-clear" id="search-clear" onclick="App.clearSearch()">&times;</button>
+            </div>`;
             actions += `<button class="btn btn-ghost btn-sm" id="project-watch-btn" onclick="App._projectWatching ? App.unwatchProject() : App.watchProject()">...</button>`;
             if (isOwner) {
                 actions += `<button class="btn btn-ghost btn-sm" onclick="App.showSettings()"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Project Settings</button>`;
@@ -3436,11 +3498,18 @@ const App = {
             this.loadProjectWatchState();
         } else {
             $('#breadcrumb').html(`<span class="breadcrumb-sep">&gt;</span> <strong>${this.esc(this.currentProject.name)}</strong>`);
+            let guestActions = `<div class="search-wrapper">
+                <span class="search-icon"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+                <input type="text" id="board-search" placeholder="Search cards..." oninput="App.searchCards(this.value)">
+                <span class="search-count" id="search-count"></span>
+                <button class="search-clear" id="search-clear" onclick="App.clearSearch()">&times;</button>
+            </div>`;
             if (this.currentProject.guest_has_email) {
-                $('#navbar-actions').html(`<button class="btn btn-ghost btn-sm" id="guest-watch-btn" onclick="App._guestWatching ? App.guestUnwatchProject() : App.guestWatchProject()">...</button>`);
+                guestActions += `<button class="btn btn-ghost btn-sm" id="guest-watch-btn" onclick="App._guestWatching ? App.guestUnwatchProject() : App.guestWatchProject()">...</button>`;
+                $('#navbar-actions').html(guestActions);
                 this.loadGuestWatchState();
             } else {
-                $('#navbar-actions').empty();
+                $('#navbar-actions').html(guestActions);
             }
             $('#guest-banner').text(`Hey ${this.guestName}! You are viewing this board as a guest.`).removeClass('hidden');
         }
@@ -4542,6 +4611,50 @@ const App = {
                 if (val) { App.closeModal(); onSave(val); }
             });
         }, 50);
+    },
+
+    // SEARCH
+    searchCards(query) {
+        const q = query.toLowerCase().trim();
+        const $clear = $('#search-clear');
+        const $count = $('#search-count');
+
+        if (!q) {
+            $('.card[data-id]').show();
+            $clear.hide();
+            $count.hide();
+            this.updateColumnCounts();
+            return;
+        }
+
+        $clear.show();
+        let matched = 0;
+        this.cards.forEach(card => {
+            const inTitle = (card.title || '').toLowerCase().includes(q);
+            const inDesc = (card.description || '').toLowerCase().includes(q);
+            const $el = $(`.card[data-id="${card.id}"]`);
+            if (inTitle || inDesc) {
+                $el.show();
+                matched++;
+            } else {
+                $el.hide();
+            }
+        });
+
+        $count.text(matched === 1 ? '1 card' : `${matched} cards`).show();
+        this.updateColumnCounts();
+    },
+
+    clearSearch() {
+        $('#board-search').val('').focus();
+        this.searchCards('');
+    },
+
+    updateColumnCounts() {
+        $('.column').each(function() {
+            const visible = $(this).find('.card[data-id]:visible').length;
+            $(this).find('.column-count').text(visible);
+        });
     },
 
     // UTILS

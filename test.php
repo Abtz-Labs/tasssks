@@ -945,6 +945,69 @@ assert_eq(200, $r['status'], 'remove member');
 $r = req('team_list');
 assert_eq(1, count($r['body']), 'only admin remains');
 
+// ─── SEARCH FEATURE ─────────────────────────────────────
+section('Search Feature');
+
+// Fetch raw HTML page to verify search markup and JS are present
+$ch = curl_init("$BASE/");
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_COOKIEFILE => $cookieFile,
+    CURLOPT_COOKIEJAR => $cookieFile,
+]);
+$html = curl_exec($ch);
+curl_close($ch);
+
+assert_true(str_contains($html, 'id="board-search"'), 'search input element present in HTML');
+assert_true(str_contains($html, 'search-wrapper'), 'search-wrapper CSS class present');
+assert_true(str_contains($html, 'search-count'), 'search-count element present');
+assert_true(str_contains($html, 'search-clear'), 'search-clear button present');
+assert_true(str_contains($html, 'searchCards('), 'searchCards JS function referenced');
+assert_true(str_contains($html, 'clearSearch('), 'clearSearch JS function referenced');
+assert_true(str_contains($html, 'updateColumnCounts('), 'updateColumnCounts JS function referenced');
+
+// Verify list_cards returns title and description (data contract for client-side search)
+$r = req('create_card', ['column_id' => $colId, 'title' => 'Search Alpha', 'description' => 'Findable description content'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create card with description for search');
+$searchCard1 = $r['body']['id'];
+
+$r = req('create_card', ['column_id' => $colId, 'title' => 'Search Beta', 'description' => 'Another unique keyword'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create second card with description');
+$searchCard2 = $r['body']['id'];
+
+$r = req('create_card', ['column_id' => $colId, 'title' => 'No match card', 'description' => ''], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create card with empty description');
+$searchCard3 = $r['body']['id'];
+
+$r = req('list_cards', ['project_id' => $adminProjectId]);
+assert_eq(200, $r['status'], 'list_cards succeeds');
+
+$card1 = null;
+$card2 = null;
+$card3 = null;
+foreach ($r['body'] as $c) {
+    if ($c['id'] == $searchCard1) $card1 = $c;
+    if ($c['id'] == $searchCard2) $card2 = $c;
+    if ($c['id'] == $searchCard3) $card3 = $c;
+}
+
+assert_true($card1 !== null, 'search card 1 found in list_cards');
+assert_eq('Search Alpha', $card1['title'], 'card title returned correctly');
+assert_eq('Findable description content', $card1['description'], 'card description returned correctly');
+
+assert_true($card2 !== null, 'search card 2 found in list_cards');
+assert_eq('Search Beta', $card2['title'], 'second card title returned correctly');
+assert_eq('Another unique keyword', $card2['description'], 'second card description returned correctly');
+
+assert_true($card3 !== null, 'search card 3 found in list_cards');
+assert_eq('No match card', $card3['title'], 'card with empty description has correct title');
+assert_eq('', $card3['description'], 'empty description returned as empty string');
+
+// Verify array_key_exists for the fields the JS search depends on
+assert_true(array_key_exists('title', $card1), 'title field exists in card response');
+assert_true(array_key_exists('description', $card1), 'description field exists in card response');
+assert_true(array_key_exists('id', $card1), 'id field exists in card response (used for data-id)');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . str_repeat('=', 40) . "\n";
 echo "Results: \033[32m$passed passed\033[0m, " . ($failed ? "\033[31m$failed failed\033[0m" : "0 failed") . "\n";

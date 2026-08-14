@@ -39,10 +39,16 @@ The entire application (backend logic, frontend markup, CSS, and JavaScript) liv
 
 That's it.
 
-For development:
+For development (requires [just](https://github.com/casey/just)):
 
 ```
-php -S localhost:8080
+just start
+```
+
+Or directly:
+
+```
+php -S localhost:8080 index.php
 ```
 
 ## User Manual
@@ -142,6 +148,12 @@ location / {
 ## Running Tests
 
 The test suite spins up its own server on port 8089 (with a temporary database):
+
+```
+just test
+```
+
+Or directly:
 
 ```
 php test.php
