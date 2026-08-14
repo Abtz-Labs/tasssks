@@ -2713,6 +2713,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 .column-count { font-size: 12px; color: var(--text-light); font-weight: 400; }
 
 .column-cards { flex: 1; overflow-y: auto; padding: 8px; min-height: 60px; }
+.column-empty { text-align: center; color: var(--text-light); font-size: 13px; padding: 16px 8px; margin: 0; }
 
 .column-footer { padding: 8px; border-top: 1px solid var(--border); }
 
@@ -2855,6 +2856,8 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
     letter-spacing: 0.5px;
     margin-bottom: 8px;
 }
+
+kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inherit; line-height: 1.4; color: var(--text); background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: 0 1px 0 var(--border-strong); min-width: 22px; text-align: center; }
 
 .markdown-body { font-size: 14px; line-height: 1.6; }
 .markdown-body p { margin-bottom: 8px; }
@@ -3679,7 +3682,7 @@ const App = {
                         ${!this.isGuest && !isFixed ? `<button class="modal-close" onclick="App.deleteColumn(${col.id})" title="Delete column" style="font-size:18px">&times;</button>` : ''}
                     </div>
                     <div class="column-cards${!this.isGuest || (isFixed && this.currentProject.guest_can_sort_cards) ? ' cards-sortable' : ''}" data-column-id="${col.id}">
-                        ${colCards.map(card => this.renderCard(card)).join('')}
+                        ${colCards.length ? colCards.map(card => this.renderCard(card)).join('') : '<p class="column-empty">Empty stack</p>'}
                     </div>
                     ${!this.isGuest || (isFixed && this.currentProject.guest_can_create_cards) ? `<div class="column-footer"><button class="add-card-btn" onclick="App.showAddCard(${col.id})">+ Add card</button></div>` : ''}
                 </div>
@@ -4620,6 +4623,23 @@ const App = {
                 <p style="font-size:13px;color:var(--text)">Go to <strong>Account</strong> to configure your notification email and choose between immediate delivery or a daily summary.</p>
             </div>
             <div class="card-detail-section">
+                <h4>Keyboard Shortcuts</h4>
+                <table style="font-size:13px;width:100%;border-collapse:collapse">
+                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px;width:100px"><kbd>⌘</kbd> <kbd>K</kbd></td><td style="padding:6px 10px">Search cards</td></tr>
+                    <tr><td style="padding:6px 10px"><kbd>⌘</kbd> <kbd>S</kbd></td><td style="padding:6px 10px">Save (in any form)</td></tr>
+                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>N</kbd></td><td style="padding:6px 10px">Add card to first column</td></tr>
+                    <tr><td style="padding:6px 10px"><kbd>W</kbd></td><td style="padding:6px 10px">Watch/unwatch card or project</td></tr>
+                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>,</kbd></td><td style="padding:6px 10px">Project settings</td></tr>
+                    <tr><td style="padding:6px 10px"><kbd>A</kbd></td><td style="padding:6px 10px">Account</td></tr>
+                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>T</kbd></td><td style="padding:6px 10px">Team</td></tr>
+                    <tr><td style="padding:6px 10px"><kbd>G</kbd></td><td style="padding:6px 10px">App settings</td></tr>
+                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>?</kbd></td><td style="padding:6px 10px">Show this help</td></tr>
+                    <tr><td style="padding:6px 10px"><kbd>1</kbd> – <kbd>9</kbd></td><td style="padding:6px 10px">Open project by index (on project list)</td></tr>
+                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>Esc</kbd></td><td style="padding:6px 10px">Cancel / close modal / clear search</td></tr>
+                </table>
+                <p style="font-size:12px;color:var(--text-light);margin-top:8px">On Windows/Linux, use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.</p>
+            </div>
+            <div class="card-detail-section">
                 <h4>Version</h4>
                 <p style="font-size:13px;color:var(--text-light)">#<?= APP_VERSION ?></p>
             </div>
@@ -4801,6 +4821,14 @@ const App = {
     },
 
     // SEARCH
+    fuzzyMatch(text, query) {
+        let qi = 0;
+        for (let i = 0; i < text.length && qi < query.length; i++) {
+            if (text[i] === query[qi]) qi++;
+        }
+        return qi === query.length;
+    },
+
     searchCards(query) {
         const q = query.toLowerCase().trim();
         const $clear = $('#search-clear');
@@ -4808,6 +4836,7 @@ const App = {
 
         if (!q) {
             $('.card[data-id]').show();
+            $('.column-empty-search').remove();
             $clear.hide();
             $count.hide();
             this.updateColumnCounts();
@@ -4815,16 +4844,26 @@ const App = {
         }
 
         $clear.show();
+        const words = q.split(/\s+/);
         let matched = 0;
         this.cards.forEach(card => {
-            const inTitle = (card.title || '').toLowerCase().includes(q);
-            const inDesc = (card.description || '').toLowerCase().includes(q);
+            const title = (card.title || '').toLowerCase();
+            const desc = (card.description || '').toLowerCase();
+            const hit = words.every(w => title.includes(w) || desc.includes(w) || this.fuzzyMatch(title, w));
             const $el = $(`.card[data-id="${card.id}"]`);
-            if (inTitle || inDesc) {
+            if (hit) {
                 $el.show();
                 matched++;
             } else {
                 $el.hide();
+            }
+        });
+
+        $('.column-empty-search').remove();
+        $('.column-cards').each(function() {
+            const hasCards = $(this).find('.card[data-id]').length > 0;
+            if (hasCards && $(this).find('.card[data-id]:visible').length === 0) {
+                $(this).append('<p class="column-empty column-empty-search">No matches</p>');
             }
         });
 
@@ -4855,9 +4894,96 @@ const App = {
 };
 
 $(document).on('keydown', e => {
-    if (e.key === 'Escape' && $('#modal-overlay').hasClass('active')) {
-        const $cancel = $('#modal-footer .btn-ghost:contains("Cancel")');
-        if ($cancel.length) { $cancel.first().click(); } else { App.closeModal(); }
+    const mod = e.metaKey || e.ctrlKey;
+    const tag = (e.target.tagName || '').toLowerCase();
+    const inInput = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
+
+    if (e.key === 'Escape') {
+        if ($('#board-search').is(':focus')) { App.clearSearch(); $('#board-search').blur(); return; }
+        if ($('#modal-overlay').hasClass('active')) {
+            const $cancel = $('#modal-footer .btn-ghost:contains("Cancel")');
+            if ($cancel.length) { $cancel.first().click(); } else { App.closeModal(); }
+        }
+        return;
+    }
+
+    // CMD+S → save (any modal with a save/confirm button)
+    if (mod && e.key === 's') {
+        e.preventDefault();
+        const $save = $('#modal-footer .btn-primary, #modal-footer .btn-danger');
+        if ($save.length) $save.first().click();
+        return;
+    }
+
+    // CMD+P → block print
+    if (mod && e.key === 'p') { e.preventDefault(); return; }
+
+    // CMD+K → focus search (works even from inputs)
+    if (mod && e.key === 'k') {
+        e.preventDefault();
+        const $search = $('#board-search');
+        if ($search.length) $search.focus().select();
+        return;
+    }
+
+    // Shortcuts below only work when not typing in an input
+    if (inInput) return;
+    if (!App.user && !App.isGuest) return;
+
+    // N → add card to first column
+    if (e.key === 'n' && !mod && !e.shiftKey) {
+        if (App.currentProject && App.columns.length) App.showAddCard(App.columns[0].id);
+        return;
+    }
+
+    // W → watch/unwatch card or project
+    if (e.key === 'w' && !mod && !e.shiftKey) {
+        if (App._openCardId) {
+            const card = App.cards.find(c => c.id == App._openCardId);
+            if (card?.is_watching) App.unwatchCard(App._openCardId);
+            else App.watchCard(App._openCardId);
+        } else if (App.currentProject) {
+            if (App._projectWatching) App.unwatchProject();
+            else App.watchProject();
+        }
+        return;
+    }
+
+    // , → project settings
+    if (e.key === ',' && !mod) {
+        if (App.currentProject && !App.isGuest) App.showSettings();
+        return;
+    }
+
+    // A → account
+    if (e.key === 'a' && !mod && !e.shiftKey) {
+        if (!App.isGuest) App.showAccount();
+        return;
+    }
+
+    // T → team
+    if (e.key === 't' && !mod && !e.shiftKey) {
+        if (!App.isGuest && App.user?.role === 'admin') App.showTeam();
+        return;
+    }
+
+    // G → app settings
+    if (e.key === 'g' && !mod && !e.shiftKey) {
+        if (!App.isGuest && App.user?.role === 'admin') App.showAppSettings();
+        return;
+    }
+
+    // ? → help
+    if (e.key === '?' && !mod) {
+        App.showHelp();
+        return;
+    }
+
+    // 1-9 → open project by index (on project list only)
+    if (!mod && !e.shiftKey && e.key >= '1' && e.key <= '9' && !App.currentProject) {
+        const idx = parseInt(e.key) - 1;
+        if (App.projects[idx]) App.openProject(App.projects[idx].id);
+        return;
     }
 });
 $(document).on('keydown', '#login-email, #login-password', e => { if (e.key === 'Enter') App.login(); });

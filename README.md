@@ -16,7 +16,9 @@ The entire application (backend logic, frontend markup, CSS, and JavaScript) liv
 - Multiple projects with customizable columns
 - Team management with roles (admin and member)
 - Guest access via shareable token links
-- Card descriptions with Markdown support
+- WYSIWYG editor with markdown shortcuts for card descriptions and comments
+- Fuzzy search across cards (title and description)
+- Keyboard shortcuts for common actions
 - Comments
 - File attachments
 - Tags (global, color-coded)
@@ -102,6 +104,24 @@ Both email modes are processed by cron jobs (not inline) to avoid blocking the a
 - SMTP configuration and test
 - Cron token generation (for authenticating cron requests)
 - Global tag management
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `⌘K` | Search cards |
+| `⌘S` | Save (in any form) |
+| `N` | Add card to first column |
+| `W` | Watch/unwatch card or project |
+| `,` | Project settings |
+| `A` | Account |
+| `T` | Team |
+| `G` | App settings |
+| `?` | Help |
+| `1`–`9` | Open project by index (on project list) |
+| `Esc` | Cancel / close modal / clear search |
+
+Single-letter shortcuts work when no input is focused. On Windows/Linux, use `Ctrl` instead of `⌘`.
 
 ## Deployment
 
