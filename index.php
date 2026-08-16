@@ -3936,6 +3936,10 @@ const App = {
                             const cardId = parseInt(evt.item.dataset.id);
                             const newColumnId = parseInt(evt.to.dataset.columnId);
                             this.api('move_card', { id: cardId, column_id: newColumnId, position: evt.newIndex }, 'POST');
+                            $(evt.to).find('.column-empty').remove();
+                            if (!$(evt.from).find('.card').length) {
+                                $(evt.from).append('<p class="column-empty">Empty stack</p>');
+                            }
                         }
                     });
                 }
@@ -3959,6 +3963,10 @@ const App = {
                     const cardId = parseInt(evt.item.dataset.id);
                     const newColumnId = parseInt(evt.to.dataset.columnId);
                     this.api('move_card', { id: cardId, column_id: newColumnId, position: evt.newIndex }, 'POST');
+                    $(evt.to).find('.column-empty').remove();
+                    if (!$(evt.from).find('.card').length) {
+                        $(evt.from).append('<p class="column-empty">Empty stack</p>');
+                    }
                 }
             });
         });
