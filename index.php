@@ -2530,13 +2530,7 @@ body {
     gap: 12px;
 }
 
-.breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    color: var(--text-muted);
-}
+.breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-muted); min-width: 0; }
 
 .breadcrumb-sep { color: var(--text-light); }
 .breadcrumb a { color: var(--text-muted); text-decoration: none; }
@@ -3267,6 +3261,8 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
     pointer-events: none;
     display: none;
 }
+.search-wrapper .search-count.count-visible { display: block; }
+.search-wrapper .search-count::after { content: ' cards'; }
 .search-wrapper .search-clear {
     position: absolute;
     right: 8px;
@@ -3279,6 +3275,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
     padding: 2px;
     display: none;
 }
+.search-wrapper .search-clear.search-visible { display: block; }
 .search-wrapper .search-clear:hover { color: var(--text); }
 
 /* Utilities */
@@ -3290,9 +3287,51 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 .mb-3 { margin-bottom: 12px; }
 
 @media (max-width: 768px) {
-    .board { padding: 12px; gap: 12px; }
+    /* Board */
+    .board { padding: 12px; padding-bottom: 48px; gap: 12px; }
     .column { flex: 0 0 260px; }
     .projects-view { margin: 24px auto; }
+
+    /* Footer: stack vertically */
+    .app-footer { flex-direction: column; gap: 4px; }
+
+    /* Modal: fit mobile */
+    .modal-overlay { padding-top: 24px; }
+    .modal { margin: 0 8px; width: calc(100% - 16px); max-height: calc(100vh - 48px); }
+    .modal-header { padding: 16px; }
+    .modal-body { padding: 16px; }
+    .modal-footer { padding: 12px 16px; }
+    .settings-tabs { margin: -16px -16px 16px; padding: 0 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .settings-tab { padding: 10px 12px; font-size: 12px; white-space: nowrap; }
+
+    /* Cards */
+    .card-title { font-size: 13px; }
+    .card-meta { flex-wrap: wrap; gap: 4px; }
+
+    /* Navbar: hide app name, brand fills space */
+    #header-brand-name { display: none; }
+    .header-brand { flex: 1; min-width: 0; }
+    .header-brand svg { width: 24px; height: 24px; flex-shrink: 0; }
+    .breadcrumb { min-width: 0; }
+    .breadcrumb strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+
+    /* Navbar: watch/settings text hidden */
+    .watch-label, .settings-label { display: none; }
+
+    /* Navbar: avatar dropdown icon only */
+    .dropdown-toggle { font-size: 0; gap: 0; padding: 0 8px; }
+    .dropdown-toggle svg { font-size: initial; }
+    .dropdown-toggle svg:last-child { display: none; }
+
+    /* Navbar: search collapses to icon, expands on focus */
+    .header-nav { position: relative; z-index: 1; }
+    .search-wrapper { position: static; }
+    .search-wrapper input { width: 34px; padding: 0 0 0 34px; border-color: transparent; background: transparent; transition: none; }
+    .search-wrapper:focus-within { position: fixed; top: 0; left: 0; right: 0; z-index: 200; background: var(--surface); border-bottom: 1px solid var(--border); box-shadow: var(--shadow-md); }
+    .search-wrapper:focus-within input { width: 100%; position: static; padding: 12px 52px 12px 44px; border-radius: 0; height: 48px; font-size: 16px; background: transparent; border: none; box-shadow: none; }
+    .search-wrapper:focus-within .search-visible { display: block !important; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); border: none; background: none; color: var(--text-light); font-size: 20px; }
+    .search-wrapper:focus-within .search-count { display: flex; position: absolute; right: 44px; top: 50%; transform: translateY(-50%); background: var(--surface-hover); padding: 2px 8px; border-radius: 10px; font-size: 11px; color: var(--text-muted); }
+    .search-wrapper:focus-within .search-count::after { content: none; }
 }
     </style>
 </head>
@@ -3840,7 +3879,7 @@ const App = {
             </div>`;
             actions += `<button class="btn btn-ghost btn-sm" id="project-watch-btn" onclick="App._projectWatching ? App.unwatchProject() : App.watchProject()">...</button>`;
             if (isOwner) {
-                actions += `<button class="btn btn-ghost btn-sm" onclick="App.showSettings()"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Project Settings</button>`;
+                actions += `<button class="btn btn-ghost btn-sm" onclick="App.showSettings()"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> <span class="settings-label">Project Settings</span></button>`;
             }
             actions += this.renderUserMenu();
             $('#navbar-actions').html(actions);
@@ -4941,8 +4980,8 @@ const App = {
             const count = watchers.length;
             this._projectWatching = watching;
             $('#project-watch-btn').html(watching
-                ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> Watching (${count})`
-                : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Watch (${count})`);
+                ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span class="watch-label">Watching (${count})</span>`
+                : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span class="watch-label">Watch (${count})</span>`);
         });
     },
     watchProject() {
@@ -4974,8 +5013,8 @@ const App = {
     updateGuestWatchBtn() {
         const count = this._guestWatchCount || 0;
         $('#guest-watch-btn').html(this._guestWatching
-            ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> Watching (${count})`
-            : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Watch (${count})`);
+            ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span class="watch-label">Watching (${count})</span>`
+            : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span class="watch-label">Watch (${count})</span>`);
     },
     guestWatchProject() {
         this.api('guest_watch', { project_id: this.currentProject.id }, 'POST').done(() => {
@@ -5115,13 +5154,13 @@ const App = {
         if (!q) {
             $('.card[data-id]').show();
             $('.column-empty-search').remove();
-            $clear.hide();
-            $count.hide();
+            $clear.removeClass('search-visible');
+            $count.removeClass('count-visible');
             this.updateColumnCounts();
             return;
         }
 
-        $clear.show();
+        $clear.addClass('search-visible');
         const words = q.split(/\s+/);
         let matched = 0;
         this.cards.forEach(card => {
@@ -5145,8 +5184,10 @@ const App = {
             }
         });
 
-        $count.text(matched === 1 ? '1 card' : `${matched} cards`).show();
+        $count.attr('data-count', matched).text(matched).addClass('count-visible');
         this.updateColumnCounts();
+        const $first = $('.card[data-id]:visible').first();
+        if ($first.length) $first[0].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
     },
 
     clearSearch() {
