@@ -3,8 +3,8 @@ default:
     @just --list
 
 # Dev server
-start:
-    php -S localhost:8080 index.php
+start port="8080":
+    php -S localhost:{{port}} index.php
 
 # Run test suite
 test:

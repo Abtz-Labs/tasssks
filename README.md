@@ -47,6 +47,12 @@ For development (requires [just](https://github.com/casey/just)):
 just start
 ```
 
+Or with a custom port:
+
+```
+just start 3000
+```
+
 Or directly:
 
 ```
