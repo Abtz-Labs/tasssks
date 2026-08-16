@@ -2847,7 +2847,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 .modal-footer:empty { border-top: none; padding: 0; }
 
 /* Settings tabs */
-.settings-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin:-24px -24px 20px; padding:0 24px; }
+.settings-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin: -12px -24px 24px; padding: 0 24px; }
 .settings-tab {
     padding:10px 16px; font-size:13px; font-weight:500; cursor:pointer;
     background:none; border:none; border-bottom:2px solid transparent;
@@ -2920,6 +2920,186 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: var(--radius); box-shadow: 0 0 40px rgba(0,0,0,0.5); }
 .lightbox-close { position: absolute; top: 20px; right: 20px; color: #fff; font-size: 32px; cursor: pointer; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Utility classes */
+.hidden { display: none !important; }
+.w-full { width: 100%; }
+.cursor-pointer { cursor: pointer; }
+
+.flex { display: flex; }
+.flex-center { display: flex; align-items: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-1 { flex: 1; }
+.flex-shrink-0 { flex-shrink: 0; }
+
+.gap-1 { gap: 4px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-sm { gap: 4px; }
+.gap-md { gap: 6px; }
+
+.p-2 { padding: 8px; }
+.p-3 { padding: 12px; }
+.p-4 { padding: 16px; }
+.px-0 { padding-left: 0; padding-right: 0; }
+
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-4 { margin-bottom: 16px; }
+.mb-6 { margin-bottom: 24px; }
+.mb-0 { margin-bottom: 0; }
+
+.text-xs { font-size: 11px; }
+.text-sm { font-size: 12px; }
+.text-base { font-size: 13px; }
+.text-lg { font-size: 14px; }
+.text-xl { font-size: 18px; }
+.text-2xl { font-size: 20px; }
+.font-normal { font-weight: 400; }
+.font-semibold { font-weight: 600; }
+
+.text { color: var(--text); }
+.text-muted { color: var(--text-muted); }
+.text-light { color: var(--text-light); }
+.text-primary { color: var(--primary); }
+.text-danger { color: var(--danger); }
+.text-success { color: var(--success); }
+.bg-hover { background: var(--surface-hover); }
+.bg-primary-light { background: var(--primary-light); }
+
+.mono { font-family: monospace; }
+.text-center { text-align: center; }
+.text-uppercase { text-transform: uppercase; }
+.text-right { text-align: right; }
+.text-nowrap { white-space: nowrap; }
+.overflow-hidden { overflow: hidden; }
+.overflow-auto { overflow: auto; }
+.word-break { word-break: break-all; }
+.whitespace-pre { white-space: pre-wrap; }
+.border-bottom { border-bottom: 1px solid var(--border); }
+
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.justify-end { justify-content: flex-end; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.rounded { border-radius: var(--radius); }
+.rounded-full { border-radius: 50%; }
+
+.auth-container { max-width: 400px; margin: 60px auto; }
+.auth-container + .auth-container { margin-top: 80px; }
+
+.inline-flex { display: inline-flex; }
+.inline-block { display: inline-block; }
+
+/* Card detail utilities */
+.card-detail-top { display: flex; align-items: center; justify-content: space-between; }
+.card-detail-meta { font-size: 12px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; flex: 1; }
+.card-detail-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.card-detail-tags .tag-add { background: var(--border); cursor: pointer; font-size: 13px; }
+.card-detail-actions { margin-bottom: 12px; }
+.card-detail-actions-end { display: flex; justify-content: flex-end; margin-top: 8px; }
+.btn-edit-inline { height: 22px; padding: 0 8px; font-size: 11px; margin-left: 8px; }
+.btn-edit-title { height: 22px; padding: 0 8px; font-size: 11px; vertical-align: middle; }
+.btn-watch { height: 30px; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.btn-comment { height: 20px; padding: 0 6px; font-size: 11px; }
+.btn-comment-danger { height: 20px; padding: 0 6px; font-size: 11px; color: var(--danger); }
+.text-browse { color: var(--primary); cursor: pointer; text-decoration: underline; }
+.text-no-desc { color: var(--text-light); }
+.text-no-att { color: var(--text-light); }
+.text-no-comments { color: var(--text-light); font-size: 13px; }
+
+/* Attachment file link */
+.attachment-file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-hover);
+    aspect-ratio: auto;
+    padding: 8px;
+    flex-direction: column;
+    gap: 4px;
+    text-decoration: none;
+}
+.attachment-file-icon { font-size: 20px; }
+.attachment-file-name { font-size: 10px; color: var(--text-muted); word-break: break-all; text-align: center; }
+
+/* Cover image */
+.cover-image { width: 100%; height: 120px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 8px; }
+
+/* Tag picker */
+.tag-picker { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tag-color-dot {
+    width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+    border: 2px solid transparent; display: inline-block; flex-shrink: 0;
+}
+.tag-color-dot-lg {
+    width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+    border: 3px solid transparent; display: inline-block;
+}
+.tag-color-dot.selected, .tag-color-dot-lg.selected { border-color: var(--text); }
+.tag-input { flex: 1; min-width: 120px; }
+.btn-shrink-0 { flex-shrink: 0; }
+.select-full { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); }
+.select-sm { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; }
+
+/* Code block */
+.code-block {
+    background: var(--surface-hover);
+    padding: 12px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
+
+/* Help table */
+.help-table { font-size: 13px; width: 100%; border-collapse: collapse; }
+.help-table td { padding: 6px 10px; }
+.help-table tr:nth-child(odd) { background: var(--surface-hover); }
+.help-table td:first-child { width: 100px; }
+
+/* Dynamic styles (keep inline: dynamic colors, conditional grab, display:none for tabs) */
+.cursor-grab { cursor: grab; }
+.text-18px { font-size: 18px; }
+.min-w-sm { min-width: 200px; }
+.min-h-textarea { min-height: 80px; }
+.pl-5 { padding-left: 20px; }
+
+/* Row card pattern */
+.row-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+}
+
+/* Badge patterns */
+.badge-admin {
+    background: #dbeafe;
+    color: #1e40af;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+.badge-member {
+    background: #f1f5f9;
+    color: #475569;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
 
 /* Guest banner */
 .guest-banner {
@@ -3121,15 +3301,15 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 <!-- Header -->
 <div class="header">
     <div class="header-brand">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="if(!App.isGuest) App.showProjects()" style="cursor:pointer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="if(!App.isGuest) App.showProjects()" class="cursor-pointer">
             <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
             <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
         </svg>
-        <span id="header-brand-name" onclick="if(!App.isGuest) App.showProjects()" style="cursor:pointer"><?= APP_NAME ?></span>
+        <span id="header-brand-name" onclick="if(!App.isGuest) App.showProjects()" class="cursor-pointer"><?= APP_NAME ?></span>
         <span class="breadcrumb" id="breadcrumb"></span>
     </div>
     <div class="header-nav">
-        <div id="navbar-actions" style="display:flex;gap:8px;align-items:center"></div>
+        <div id="navbar-actions" class="flex-center gap-2"></div>
     </div>
 </div>
 
@@ -3138,9 +3318,9 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 
 <!-- Setup View (first-time) -->
 <div id="view-setup" class="projects-view hidden">
-    <div style="max-width:400px;margin:60px auto">
-        <h1 style="margin-bottom:8px">Welcome to <?= APP_NAME ?></h1>
-        <p style="color:var(--text-muted);margin-bottom:24px">Create your admin account to get started.</p>
+    <div class="auth-container">
+        <h1 class="mb-2">Welcome to <?= APP_NAME ?></h1>
+        <p class="text-muted mb-6">Create your admin account to get started.</p>
         <form onsubmit="event.preventDefault();App.setup()">
             <div class="form-group">
                 <label>Name</label>
@@ -3154,16 +3334,16 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
                 <label>Password</label>
                 <input type="password" id="setup-password" placeholder="Min. 6 characters" autocomplete="new-password">
             </div>
-            <button type="submit" class="btn btn-primary" style="width:100%">Create Account</button>
+            <button type="submit" class="btn btn-primary w-full">Create Account</button>
         </form>
-        <p id="setup-error" class="hidden" style="color:var(--danger);margin-top:12px;font-size:13px"></p>
+        <p id="setup-error" class="hidden text-danger mt-3 text-base"></p>
     </div>
 </div>
 
 <!-- Login View -->
 <div id="view-login" class="projects-view hidden">
-    <div style="max-width:360px;margin:80px auto;text-align:center">
-        <h1 style="margin-bottom:24px">&#128274; <span id="login-brand"><?= APP_NAME ?></span></h1>
+    <div class="auth-container text-center">
+        <h1 class="mb-6">&#128274; <span id="login-brand"><?= APP_NAME ?></span></h1>
         <form onsubmit="event.preventDefault();App.login()">
             <div class="form-group">
                 <input type="text" id="login-email" placeholder="Email" autocomplete="email">
@@ -3171,17 +3351,17 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
             <div class="form-group">
                 <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
             </div>
-            <button type="submit" class="btn btn-primary" style="width:100%">Sign In</button>
+            <button type="submit" class="btn btn-primary w-full">Sign In</button>
         </form>
-        <p id="login-error" class="hidden" style="color:var(--danger);margin-top:12px;font-size:13px"></p>
+        <p id="login-error" class="hidden text-danger mt-3 text-base"></p>
     </div>
 </div>
 
 <!-- Unauthorized View -->
 <div id="view-unauthorized" class="projects-view hidden">
-    <div style="max-width:400px;margin:80px auto;text-align:center">
-        <h1 style="margin-bottom:12px">Unauthorized</h1>
-        <p style="color:var(--text-muted)">You need a valid guest link to access this board.</p>
+    <div class="auth-container text-center">
+        <h1 class="mb-3">Unauthorized</h1>
+        <p class="text-muted">You need a valid guest link to access this board.</p>
     </div>
 </div>
 
@@ -3523,7 +3703,7 @@ const App = {
     renderProjects() {
         const list = $('#projects-list');
         if (!this.projects.length) {
-            list.html('<div style="text-align:center;padding:40px;color:var(--text-muted)">No projects yet. Create one to get started.</div>');
+            list.html('<div class="text-center p-4 text-muted">No projects yet. Create one to get started.</div>');
             return;
         }
         list.html(this.projects.map(p => {
@@ -3537,7 +3717,7 @@ const App = {
                     <h3>${this.esc(p.name)} ${watchIcon}</h3>
                     <span>Created ${p.created_at}</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px">
+                <div class="flex-center gap-2">
                     ${badgeHtml}
                     ${deleteBtn}
                 </div>
@@ -3629,6 +3809,7 @@ const App = {
                     <a class="dropdown-item" href="https://github.com/rogeriotaques/tasssks/issues" target="_blank" rel="noopener noreferrer" onclick="$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         Report a Bug
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2" style="margin-left:auto"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     </a>
                     <div class="dropdown-divider"></div>
                     <button class="dropdown-item dropdown-item--danger" onclick="App.logout()">
@@ -3694,7 +3875,7 @@ const App = {
                             <span class="column-name"${!this.isGuest && !isFixed ? ` ondblclick="App.editColumnName(${col.id}, this)"` : ''}>${this.esc(col.name)}</span>
                             <span class="column-count">${colCards.length}</span>
                         </h3>
-                        ${!this.isGuest && !isFixed ? `<button class="modal-close" onclick="App.deleteColumn(${col.id})" title="Delete column" style="font-size:18px">&times;</button>` : ''}
+                        ${!this.isGuest && !isFixed ? `<button class="modal-close text-18px" onclick="App.deleteColumn(${col.id})" title="Delete column">&times;</button>` : ''}
                     </div>
                     <div class="column-cards${!this.isGuest || (isFixed && this.currentProject.guest_can_sort_cards) ? ' cards-sortable' : ''}" data-column-id="${col.id}">
                         ${colCards.length ? colCards.map(card => this.renderCard(card)).join('') : '<p class="column-empty">Empty stack</p>'}
@@ -3722,7 +3903,7 @@ const App = {
         ).join('');
         const imageExts = ['jpg','jpeg','png','gif','webp','svg'];
         const coverAtt = (card.attachments || []).find(a => imageExts.includes(a.filename.split('.').pop().toLowerCase()));
-        const coverHtml = coverAtt ? `<img src="?file=${encodeURIComponent(coverAtt.path)}" style="width:100%;height:120px;object-fit:cover;border-radius:var(--radius-sm);margin-bottom:8px">` : '';
+        const coverHtml = coverAtt ? `<img src="?file=${encodeURIComponent(coverAtt.path)}" class="cover-image">` : '';
         const hasAtt = (card.attachments || []).length > 0;
         const commentCount = card.comment_count || 0;
         const unread = this.unreadCounts[card.id] || 0;
@@ -3731,9 +3912,9 @@ const App = {
             <div class="card" data-id="${card.id}" onclick="App.openCard(${card.id})">
                 ${coverHtml}
                 ${tagsHtml ? `<div class="card-tags">${tagsHtml}</div>` : ''}
-                <div class="card-title" style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div class="card-title flex-between items-start">
                     <span>${this.esc(card.title)} ${unreadBadge}</span>
-                    <span style="font-size:11px;color:var(--text-light);white-space:nowrap;margin-left:8px;display:inline-flex;align-items:center;gap:3px">${card.is_watching ? '<svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--primary)" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : ''}#${card.id}</span>
+                    <span class="text-xs text-light text-nowrap ml-2 inline-flex items-center gap-1">${card.is_watching ? '<svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--primary)" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : ''}#${card.id}</span>
                 </div>
                 <div class="card-meta">
                     ${card.description ? '<span title="Has description">&#9776;</span>' : ''}
@@ -3852,7 +4033,7 @@ const App = {
             history.replaceState(null, '', `#project/${this.currentProject.id}/card/${cardId}`);
             this._navigating = false;
         }
-        const descHtml = card.description ? DOMPurify.sanitize(marked.parse(card.description), { ADD_ATTR: ['target'] }) : '<em style="color:var(--text-light)">No description</em>';
+        const descHtml = card.description ? DOMPurify.sanitize(marked.parse(card.description), { ADD_ATTR: ['target'] }) : '<em class="text-no-desc">No description</em>';
         const assignedTags = (card.tags || []);
         const tagsHtml = assignedTags.map(t =>
             `<span class="tag" style="background:${t.color};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
@@ -3867,20 +4048,20 @@ const App = {
                     ${!this.isGuest ? `<button class="attachment-delete" onclick="event.stopPropagation();App.deleteAttachment(${a.id},${cardId})">&times;</button>` : ''}
                 </div>`;
             }
-            return `<a href="?file=${encodeURIComponent(a.path)}" download="${this.esc(a.filename)}" class="attachment-item" style="display:flex;align-items:center;justify-content:center;background:var(--surface-hover);aspect-ratio:auto;padding:8px;flex-direction:column;gap:4px;text-decoration:none" onclick="event.stopPropagation()">
-                <span style="font-size:20px">&#128196;</span>
-                <span style="font-size:10px;color:var(--text-muted);word-break:break-all;text-align:center">${this.esc(a.filename)}</span>
+            return `<a href="?file=${encodeURIComponent(a.path)}" download="${this.esc(a.filename)}" class="attachment-item attachment-file" onclick="event.stopPropagation()">
+                <span class="attachment-file-icon">&#128196;</span>
+                <span class="attachment-file-name">${this.esc(a.filename)}</span>
                 ${!this.isGuest ? `<button class="attachment-delete" onclick="event.stopPropagation();event.preventDefault();App.deleteAttachment(${a.id},${cardId})">&times;</button>` : ''}
             </a>`;
         }).join('');
 
         const canWatch = !this.isGuest || (this.isGuest && this.currentProject.guest_has_email);
         const watchAction = this.isGuest ? `App._cardWatching ? App.guestUnwatchCard(${cardId}) : App.guestWatchCard(${cardId})` : `App._cardWatching ? App.unwatchCard(${cardId}) : App.watchCard(${cardId})`;
-        const watchBtn = canWatch ? `<button class="btn btn-ghost" style="height:30px;padding:0 12px;font-size:13px;display:inline-flex;align-items:center;gap:4px" id="watch-btn-${cardId}" onclick="${watchAction}">...</button>` : '';
+        const watchBtn = canWatch ? `<button class="btn btn-ghost btn-watch" id="watch-btn-${cardId}" onclick="${watchAction}">...</button>` : '';
 
         let body = `
-            <div class="card-detail-section" style="display:flex;align-items:center;justify-content:space-between">
-                <div style="font-size:12px;color:var(--text-muted);display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;flex:1">
+            <div class="card-detail-section card-detail-top">
+                <div class="card-detail-meta">
                     <span><strong>ID:</strong> #${card.id}</span>
                     ${card.author_name ? `<span><strong>Author:</strong> ${this.esc(card.author_name)}</span>` : '<span></span>'}
                     <span><strong>Created:</strong> ${card.created_at}</span>
@@ -3888,27 +4069,27 @@ const App = {
                 </div>
                 ${watchBtn}
             </div>
-            <div class="card-detail-section" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <div class="card-detail-section card-detail-tags">
                 ${tagsHtml}
-                ${!this.isGuest ? `<span class="tag" style="background:var(--border);cursor:pointer;font-size:13px" onclick="App.showTagPicker(${cardId})">+</span>` : ''}
+                ${!this.isGuest ? `<span class="tag tag-add" onclick="App.showTagPicker(${cardId})">+</span>` : ''}
             </div>
             <div class="card-detail-section">
-                <h4>Description ${!this.isGuest ? `<button class="btn btn-ghost btn-sm" style="height:22px;padding:0 8px;font-size:11px;margin-left:8px" onclick="App.editCardDescription(${cardId})">Edit</button>` : ''}</h4>
+                <h4>Description ${!this.isGuest ? `<button class="btn btn-ghost btn-sm btn-edit-inline" onclick="App.editCardDescription(${cardId})">Edit</button>` : ''}</h4>
                 <div class="markdown-body">${descHtml}</div>
             </div>
             <div class="card-detail-section">
                 <h4>Attachments</h4>
-                <div class="attachment-grid mb-2">${attHtml || '<em style="color:var(--text-light)">None</em>'}</div>
+                <div class="attachment-grid mb-2">${attHtml || '<em class="text-no-att">None</em>'}</div>
                 ${!this.isGuest ? `<div class="drop-zone mt-2" id="drop-zone" data-card-id="${cardId}">
-                    <p>Drop files here or <label for="file-upload" style="color:var(--primary);cursor:pointer;text-decoration:underline">browse</label></p>
-                    <input type="file" id="file-upload" multiple onchange="App.uploadFiles(${cardId}, this.files)" style="display:none">
+                    <p>Drop files here or <label for="file-upload" class="text-browse">browse</label></p>
+                    <input type="file" id="file-upload" multiple onchange="App.uploadFiles(${cardId}, this.files)" class="hidden">
                 </div>` : ''}
             </div>
             <div class="card-detail-section">
                 <h4>Comments</h4>
-                <div style="margin-bottom:12px">
+                <div class="card-detail-actions">
                     <div class="quill-wrap compact"><div id="new-comment"></div></div>
-                    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+                    <div class="card-detail-actions-end">
                         <button class="btn btn-primary btn-sm" onclick="App.addComment(${cardId})">Comment</button>
                     </div>
                 </div>
@@ -3918,7 +4099,7 @@ const App = {
         const footer = !this.isGuest ? `
             <button class="btn btn-danger" onclick="App.deleteCard(${cardId})">Delete Card</button>
         ` : '';
-        const titleHtml = this.esc(card.title) + (!this.isGuest ? ` <button class="btn btn-ghost btn-sm" style="height:22px;padding:0 8px;font-size:11px;vertical-align:middle" onclick="App.editCardTitle(${cardId})">Edit</button>` : '');
+        const titleHtml = this.esc(card.title) + (!this.isGuest ? ` <button class="btn btn-ghost btn-sm btn-edit-title" onclick="App.editCardTitle(${cardId})">Edit</button>` : '');
         this.openModal(titleHtml, body, footer);
         setTimeout(() => { this._quillComment = _initQuill('#new-comment', { compact: true, placeholder: 'Write a comment...' }); }, 50);
         this.loadComments(cardId);
@@ -4009,11 +4190,11 @@ const App = {
             ${assigned.length ? `<div class="card-detail-section"><h4>Assigned</h4><div class="card-tags">${assignedHtml}</div></div>` : ''}
             ${available.length ? `<div class="card-detail-section"><h4>Available</h4><div class="card-tags">${availableHtml}</div></div>` : ''}
             <div class="card-detail-section"><h4>Create New Tag</h4>
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                    <input type="text" id="new-tag-name" placeholder="Tag name" style="flex:1;min-width:120px">
-                    ${colors.map(c => `<span style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid transparent;display:inline-block;flex-shrink:0" onclick="$(this).parent().find('span').css('border-color','transparent');$(this).css('border-color','var(--text)');$('#new-tag-color').val('${c}')"></span>`).join('')}
+                <div class="tag-picker">
+                    <input type="text" id="new-tag-name" placeholder="Tag name" class="tag-input">
+                    ${colors.map(c => `<span class="tag-color-dot" style="background:${c}" onclick="App.selectTagColor(this,'${c}')"></span>`).join('')}
                     <input type="hidden" id="new-tag-color" value="${colors[0]}">
-                    <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="App.createTag()">Add</button>
+                    <button class="btn btn-primary btn-sm btn-shrink-0" onclick="App.createTag()">Add</button>
                 </div>
             </div>
         `, '');
@@ -4026,13 +4207,19 @@ const App = {
         this.openModal('New Tag', `
             <div class="form-group"><label>Name</label><input type="text" id="new-tag-name" placeholder="e.g. Bug"></div>
             <div class="form-group"><label>Color</label>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <div class="tag-picker">
                 ${colors.map(c => `<span style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:3px solid transparent;display:inline-block" onclick="$(this).parent().find('span').css('border-color','transparent');$(this).css('border-color','var(--text)');$('#new-tag-color').val('${c}')"></span>`).join('')}
             </div>
             <input type="hidden" id="new-tag-color" value="${colors[0]}">
             </div>
         `, `<button class="btn btn-primary" onclick="App.createTag()">Create</button>`);
         setTimeout(() => $('#new-tag-name').focus(), 100);
+    },
+
+    selectTagColor(el, color) {
+        $(el).parent().find('.tag-color-dot, .tag-color-dot-lg').removeClass('selected');
+        $(el).addClass('selected');
+        $('#new-tag-color').val(color);
     },
 
     createTag() {
@@ -4058,15 +4245,15 @@ const App = {
                 return `<div class="comment">
                     <div class="comment-header">
                         <span class="comment-author">${this.esc(c.author_name)}</span>
-                        <span style="display:flex;align-items:center;gap:8px">
-                            ${isOwn ? `<button class="btn btn-ghost btn-sm" style="height:20px;padding:0 6px;font-size:11px" onclick="App.editComment(${c.id},${cardId})">Edit</button>
-                            <button class="btn btn-ghost btn-sm" style="height:20px;padding:0 6px;font-size:11px;color:var(--danger)" onclick="App.deleteComment(${c.id},${cardId})">Delete</button>` : ''}
+                        <span class="flex-center gap-2">
+                            ${isOwn ? `<button class="btn btn-ghost btn-sm btn-comment" onclick="App.editComment(${c.id},${cardId})">Edit</button>
+                            <button class="btn btn-ghost btn-sm btn-comment-danger" onclick="App.deleteComment(${c.id},${cardId})">Delete</button>` : ''}
                             <span class="comment-date">${c.created_at}</span>
                         </span>
                     </div>
                     <div class="comment-body markdown-body" data-raw="${encodeURIComponent(c.content)}">${DOMPurify.sanitize(marked.parse(c.content), { ADD_ATTR: ['target'] })}</div>
                 </div>`;
-            }).join('') : '<p style="color:var(--text-light);font-size:13px">No comments yet.</p>';
+            }).join('') : '<p class="text-no-comments">No comments yet.</p>';
             $('#card-comments').html(html);
         });
     },
@@ -4168,14 +4355,14 @@ const App = {
                             <input type="email" id="notif-email" value="${this.esc(notif.email || '')}" placeholder="Leave blank to use account email">
                         </div>
                         <div class="form-group"><label>Delivery</label>
-                            <select id="notif-delivery" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--radius)">
+                            <select id="notif-delivery" class="select-full">
                                 <option value="immediate" ${notif.delivery === 'immediate' ? 'selected' : ''}>Immediate</option>
                                 <option value="daily" ${notif.delivery === 'daily' ? 'selected' : ''}>Daily summary</option>
                             </select>
                         </div>
                     </div>
-                    <p id="account-error" class="hidden" style="color:var(--danger);font-size:13px;margin-bottom:12px"></p>
-                    <p id="account-success" class="hidden" style="color:var(--success);font-size:13px;margin-bottom:12px">Saved!</p>
+                    <p id="account-error" class="hidden text-danger text-base mb-3"></p>
+                    <p id="account-success" class="hidden text-success text-base mb-3">Saved!</p>
                 </form>
             `, `<button class="btn btn-primary" onclick="App.saveAccount()">Save</button>`);
             setTimeout(() => $('#account-name').focus(), 50);
@@ -4225,19 +4412,19 @@ const App = {
             const rows = users.map(u => {
                 const isSelf = u.id === this.user.id;
                 const roleBadge = u.role === 'admin'
-                    ? '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500">Admin</span>'
-                    : '<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500">Member</span>';
-                const actions = isSelf ? '<span style="font-size:12px;color:var(--text-light)">You</span>' : `
+                    ? '<span class="badge-admin">Admin</span>'
+                    : '<span class="badge-member">Member</span>';
+                const actions = isSelf ? '<span class="text-sm text-light">You</span>' : `
                     <button class="btn btn-ghost btn-sm" onclick="App.teamChangeRole(${u.id},'${u.role}')">${u.role === 'admin' ? 'Demote' : 'Promote'}</button>
                     <button class="btn btn-ghost btn-sm" onclick="App.teamResetPw(${u.id})">Reset Pwd</button>
                     <button class="btn btn-danger btn-sm" onclick="App.teamRemove(${u.id},'${this.escAttr(u.name)}')">Remove</button>
                 `;
-                return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+                return `<div class="row-card">
                     <div>
-                        <strong style="font-size:13px">${this.esc(u.name)}</strong> ${roleBadge}
-                        <div style="font-size:12px;color:var(--text-light)">${this.esc(u.email)}</div>
+                        <strong class="text-base">${this.esc(u.name)}</strong> ${roleBadge}
+                        <div class="text-sm text-light">${this.esc(u.email)}</div>
                     </div>
-                    <div style="display:flex;gap:4px;align-items:center">${actions}</div>
+                    <div class="flex-center gap-sm">${actions}</div>
                 </div>`;
             }).join('');
 
@@ -4250,7 +4437,7 @@ const App = {
                     <div class="form-group"><label>Role</label>
                         <select id="team-add-role"><option value="member">Member</option><option value="admin">Admin</option></select>
                     </div>
-                    <p id="team-error" class="hidden" style="color:var(--danger);font-size:13px;margin-bottom:12px"></p>
+                    <p id="team-error" class="hidden text-danger text-base mb-3"></p>
                     <button class="btn btn-primary" onclick="App.teamAdd()">Add Member</button>
                 </div>
             `, '');
@@ -4290,7 +4477,7 @@ const App = {
             <div class="form-group"><label>New Password</label>
                 <input type="password" id="team-reset-pw" placeholder="New password (min 6 chars)" autocomplete="new-password">
             </div>
-            <p id="team-reset-error" class="hidden" style="color:var(--danger);font-size:13px;margin-bottom:12px"></p>
+            <p id="team-reset-error" class="hidden text-danger text-base mb-3"></p>
         `, `
             <button class="btn btn-ghost" onclick="App.showTeam()">Cancel</button>
             <button class="btn btn-primary" onclick="App.teamDoResetPw(${id})">Reset</button>
@@ -4333,9 +4520,9 @@ const App = {
                         </div>
                     </div>
                 </div>
-                <div id="tab-smtp" class="settings-tab-content" style="display:none">
+                <div id="tab-smtp" class="settings-tab-content hidden">
                     <div class="card-detail-section"><h4>SMTP (Email Notifications)</h4>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                        <div class="grid-2">
                             <div class="form-group"><label>Host</label>
                                 <input type="text" id="smtp-host" value="${this.esc(smtp.smtp_host || '')}" placeholder="smtp.example.com">
                             </div>
@@ -4356,28 +4543,28 @@ const App = {
                             </div>
                         </div>
                         <div class="form-group"><label>Encryption</label>
-                            <select id="smtp-encryption" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--radius)">
+                            <select id="smtp-encryption" class="select-full">
                                 <option value="tls" ${smtp.smtp_encryption === 'tls' ? 'selected' : ''}>TLS (STARTTLS)</option>
                                 <option value="ssl" ${smtp.smtp_encryption === 'ssl' ? 'selected' : ''}>SSL</option>
                                 <option value="none" ${smtp.smtp_encryption === 'none' ? 'selected' : ''}>None</option>
                             </select>
                         </div>
-                        <div style="display:flex;gap:8px;margin-top:8px">
+                        <div class="flex-center gap-2 mt-2">
                             <button class="btn btn-primary" onclick="App.saveSmtp()">Save SMTP</button>
                             <button class="btn btn-ghost" onclick="App.testSmtp()">Send Test Email</button>
                         </div>
-                        <p id="smtp-msg" class="hidden" style="font-size:12px;margin-top:8px"></p>
+                        <p id="smtp-msg" class="hidden text-sm mt-2"></p>
                     </div>
                 </div>
-                <div id="tab-cron" class="settings-tab-content" style="display:none">
+                <div id="tab-cron" class="settings-tab-content hidden">
                     <div class="card-detail-section"><h4>Cron Token</h4>
-                        <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">Use this token to authenticate the daily digest cron job without a session.</p>
+                        <p class="text-sm text-light mb-2">Use this token to authenticate the daily digest cron job without a session.</p>
                         <div class="field-addons">
-                            <input type="text" id="cron-token" value="${this.esc(smtp.cron_token || '')}" readonly style="font-family:monospace;font-size:12px">
+                            <input type="text" id="cron-token" value="${this.esc(smtp.cron_token || '')}" readonly class="mono text-sm">
                             <button class="btn btn-ghost" onclick="App.generateCronToken()">Generate</button>
                         </div>
-                        <p style="font-size:11px;color:var(--text-light);margin-top:6px">Use with: <code>?action=send_notifications</code> and <code>?action=send_digest</code></p>
-                        ${smtp.last_digest_at ? `<p style="font-size:11px;color:var(--text-light);margin-top:6px">Last digest run: <strong>${smtp.last_digest_at}</strong></p>` : '<p style="font-size:11px;color:var(--text-light);margin-top:6px">Digest has not run yet.</p>'}
+                        <p class="text-xs text-light mt-2">Use with: <code>?action=send_notifications</code> and <code>?action=send_digest</code></p>
+                        ${smtp.last_digest_at ? `<p class="text-xs text-light mt-2">Last digest run: <strong>${smtp.last_digest_at}</strong></p>` : '<p class="text-xs text-light mt-2">Digest has not run yet.</p>'}
                     </div>
                 </div>
             `, '');
@@ -4389,8 +4576,8 @@ const App = {
         const tabs = ['general', 'smtp', 'cron'];
         const idx = tabs.indexOf(tab);
         $('.settings-tab').removeClass('active').eq(idx).addClass('active');
-        $('.settings-tab-content').hide();
-        $(`#tab-${tab}`).show();
+        $('.settings-tab-content').addClass('hidden');
+        $(`#tab-${tab}`).removeClass('hidden');
     },
 
     saveSmtp() {
@@ -4450,31 +4637,29 @@ const App = {
             const webhooks = webhooksRes[0] || webhooksRes;
             const guestRows = guests.map(g => {
                 const link = `${location.origin}${location.pathname}?guest=${g.token}`;
-                return `<div style="padding:10px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
-                    <div style="display:flex;align-items:center;justify-content:space-between">
-                        <div>
-                            <strong style="font-size:13px">${this.esc(g.name)}</strong>
-                            <div style="font-size:11px;color:var(--text-light)">${g.can_comment ? 'Can comment' : 'View only'}${g.email ? ' · ' + this.esc(g.email) : ' · no email'}</div>
-                        </div>
-                        <div style="display:flex;gap:4px">
-                            <button class="btn btn-ghost btn-sm" onclick="App.editGuest(${g.id},'${this.esc(g.name).replace(/'/g,"\\'")}','${this.esc(g.email || '').replace(/'/g,"\\'")}')">Edit</button>
-                            <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${link}');this.textContent='Copied!'">Copy Link</button>
-                            <button class="btn btn-danger btn-sm" onclick="App.deleteGuest(${g.id})">Remove</button>
-                        </div>
+                return `<div class="row-card">
+                    <div>
+                        <strong class="text-base">${this.esc(g.name)}</strong>
+                        <div class="text-xs text-light">${g.can_comment ? 'Can comment' : 'View only'}${g.email ? ' · ' + this.esc(g.email) : ' · no email'}</div>
+                    </div>
+                    <div class="flex-center gap-sm">
+                        <button class="btn btn-ghost btn-sm" onclick="App.editGuest(${g.id},'${this.esc(g.name).replace(/'/g,"\\'")}','${this.esc(g.email || '').replace(/'/g,"\\'")}')">Edit</button>
+                        <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${link}');this.textContent='Copied!'">Copy Link</button>
+                        <button class="btn btn-danger btn-sm" onclick="App.deleteGuest(${g.id})">Remove</button>
                     </div>
                 </div>`;
-            }).join('') || '<p style="color:var(--text-light);font-size:13px">No guests yet.</p>';
+            }).join('') || '<p class="text-no-comments">No guests yet.</p>';
 
-            const webhookRows = webhooks.map(w => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
-                <div style="overflow:hidden">
-                    <strong style="font-size:12px;text-transform:uppercase;color:var(--text-light)">${this.esc(w.type)}</strong>
-                    <div style="font-size:12px;color:var(--text);word-break:break-all">${this.esc(w.url)}</div>
+            const webhookRows = webhooks.map(w => `<div class="row-card">
+                <div class="overflow-hidden">
+                    <strong class="text-sm text-uppercase text-light">${this.esc(w.type)}</strong>
+                    <div class="text-sm text word-break">${this.esc(w.url)}</div>
                 </div>
-                <div style="display:flex;gap:4px;flex-shrink:0">
+                <div class="flex-center gap-sm flex-shrink-0">
                     <button class="btn btn-ghost btn-sm" onclick="App.toggleWebhook(${w.id})">${w.enabled ? 'Disable' : 'Enable'}</button>
                     <button class="btn btn-danger btn-sm" onclick="App.deleteWebhook(${w.id})">Remove</button>
                 </div>
-            </div>`).join('') || '<p style="color:var(--text-light);font-size:13px">No webhooks configured.</p>';
+            </div>`).join('') || '<p class="text-no-comments">No webhooks configured.</p>';
 
             const guestCreate = this.currentProject.guest_can_create_cards ? 'checked' : '';
             const guestSort = this.currentProject.guest_can_sort_cards ? 'checked' : '';
@@ -4496,46 +4681,46 @@ const App = {
                         <span class="tag" style="background:${t.color}">${this.esc(t.name)}
                             <span class="tag-delete" onclick="App.deleteTag(${t.id})">&times;</span>
                         </span>
-                    `).join('') || '<em style="color:var(--text-light)">No tags</em>'}</div>
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                        <input type="text" id="settings-tag-name" placeholder="Tag name" style="flex:1;min-width:120px">
-                        ${['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => `<span style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid transparent;display:inline-block;flex-shrink:0" onclick="$(this).parent().find('span').css('border-color','transparent');$(this).css('border-color','var(--text)');$('#settings-tag-color').val('${c}')"></span>`).join('')}
+                    `).join('') || '<em class="text-no-desc">No tags</em>'}</div>
+                    <div class="tag-picker">
+                        <input type="text" id="settings-tag-name" placeholder="Tag name" class="tag-input">
+                        ${['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => `<span class="tag-color-dot" style="background:${c}" onclick="App.selectTagColor(this,'${c}')"></span>`).join('')}
                         <input type="hidden" id="settings-tag-color" value="#3b82f6">
-                        <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="App.createTagFromSettings()">Add</button>
+                        <button class="btn btn-primary btn-sm btn-shrink-0" onclick="App.createTagFromSettings()">Add</button>
                     </div>
                     </div>
                 </div>
-                <div id="ptab-webhooks" class="settings-tab-content" style="display:none">
-                    <div class="card-detail-section"><h4>Webhooks <a href="#" onclick="event.preventDefault();App.showWebhookPayloads()" style="font-size:11px;font-weight:400;margin-left:8px">View payload format</a></h4>
-                        <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">Receive notifications via Slack, Telegram, or any HTTP endpoint.</p>
+                <div id="ptab-webhooks" class="settings-tab-content hidden">
+                    <div class="card-detail-section"><h4>Webhooks <a href="#" onclick="event.preventDefault();App.showWebhookPayloads()" class="text-xs font-normal ml-2">View payload format</a></h4>
+                        <p class="text-sm text-light mb-2">Receive notifications via Slack, Telegram, or any HTTP endpoint.</p>
                         ${webhookRows}
-                        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
-                            <select id="webhook-type" style="padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px">
+                        <div class="tag-picker mt-2">
+                            <select id="webhook-type" class="select-sm">
                                 <option value="generic">Generic</option>
                                 <option value="slack">Slack</option>
                                 <option value="telegram">Telegram</option>
                             </select>
-                            <input type="text" id="webhook-url" placeholder="https://hooks.slack.com/..." style="flex:1;min-width:200px">
+                            <input type="text" id="webhook-url" placeholder="https://hooks.slack.com/..." class="flex-1 min-w-sm">
                             <button class="btn btn-primary btn-sm" onclick="App.createWebhook()">Add</button>
                         </div>
                     </div>
                 </div>
-                <div id="ptab-guests" class="settings-tab-content" style="display:none">
+                <div id="ptab-guests" class="settings-tab-content hidden">
                     <div class="card-detail-section"><h4>Guest Permissions</h4>
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:14px;font-weight:400;color:var(--text)">
+                        <label class="flex-center gap-2 cursor-pointer mb-2 text-lg font-normal text">
                             <input type="checkbox" id="guest-create-cards" ${guestCreate} onchange="App.updateGuestPerm('guest_can_create_cards', this.checked)">
                             Allow guests to create cards in the first column
                         </label>
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:400;color:var(--text)">
+                        <label class="flex-center gap-2 cursor-pointer text-lg font-normal text">
                             <input type="checkbox" id="guest-sort-cards" ${guestSort} onchange="App.updateGuestPerm('guest_can_sort_cards', this.checked)">
                             Allow guests to sort cards in the first column
                         </label>
                     </div>
                     <div class="card-detail-section"><h4>Guest Access</h4>
                         ${guestRows}
-                        <div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">
-                            <input type="text" id="new-guest-name" placeholder="Guest name" style="flex:1;min-width:120px">
-                            <input type="email" id="new-guest-email" placeholder="Email (optional)" style="flex:1;min-width:150px">
+                        <div class="tag-picker mt-3">
+                            <input type="text" id="new-guest-name" placeholder="Guest name" class="tag-input">
+                            <input type="email" id="new-guest-email" placeholder="Email (optional)" class="flex-1 min-w-sm">
                             <button class="btn btn-primary btn-sm" onclick="App.createGuest()">Add Guest</button>
                         </div>
                     </div>
@@ -4549,8 +4734,8 @@ const App = {
         const tabs = ['general', 'webhooks', 'guests'];
         const idx = tabs.indexOf(tab);
         $('.settings-tab').removeClass('active').eq(idx).addClass('active');
-        $('.settings-tab-content').hide();
-        $(`#ptab-${tab}`).show();
+        $('.settings-tab-content').addClass('hidden');
+        $(`#ptab-${tab}`).removeClass('hidden');
     },
 
     updateProjectName() {
@@ -4607,11 +4792,11 @@ const App = {
 
     showWebhookPayloads() {
         this.openModal('Webhook Payload Format', `
-            <div style="margin-bottom:12px"><button class="btn btn-ghost btn-sm" onclick="App.showSettings()">&larr; Back to Settings</button></div>
+            <div class="mb-3"><button class="btn btn-ghost btn-sm" onclick="App.showSettings()">&larr; Back to Settings</button></div>
             <div class="card-detail-section">
                 <h4>Generic</h4>
-                <p style="font-size:12px;color:var(--text-light);margin-bottom:6px">POST with <code>Content-Type: application/json</code></p>
-                <pre style="background:var(--surface-hover);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;white-space:pre-wrap">{
+                <p class="text-sm text-light mb-2">POST with <code>Content-Type: application/json</code></p>
+                <pre class="code-block">{
   "event": "new_card",
   "project": "My Project",
   "actor": "John Doe",
@@ -4621,23 +4806,23 @@ const App = {
   },
   "timestamp": "2026-08-13T10:30:00+00:00"
 }</pre>
-                <p style="font-size:11px;color:var(--text-light);margin-top:6px">Events: <code>new_card</code>, <code>new_comment</code>, <code>card_updated</code>, <code>new_project</code>, <code>password_changed</code></p>
+                <p class="text-xs text-light mt-2">Events: <code>new_card</code>, <code>new_comment</code>, <code>card_updated</code>, <code>new_project</code>, <code>password_changed</code></p>
             </div>
             <div class="card-detail-section">
                 <h4>Slack</h4>
-                <p style="font-size:12px;color:var(--text-light);margin-bottom:6px">POST to your Slack Incoming Webhook URL</p>
-                <pre style="background:var(--surface-hover);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;white-space:pre-wrap">{
+                <p class="text-sm text-light mb-2">POST to your Slack Incoming Webhook URL</p>
+                <pre class="code-block">{
   "text": "John Doe created card \\"Fix login bug\\" in My Project"
 }</pre>
             </div>
             <div class="card-detail-section">
                 <h4>Telegram</h4>
-                <p style="font-size:12px;color:var(--text-light);margin-bottom:6px">POST to <code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage</code></p>
-                <pre style="background:var(--surface-hover);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;white-space:pre-wrap">{
+                <p class="text-sm text-light mb-2">POST to <code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage</code></p>
+                <pre class="code-block">{
   "text": "John Doe created card \\"Fix login bug\\" in My Project",
   "parse_mode": "HTML"
 }</pre>
-                <p style="font-size:11px;color:var(--text-light);margin-top:6px">Set the webhook URL to include <code>chat_id</code> as a query param, e.g.:<br><code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;</code></p>
+                <p class="text-xs text-light mt-2">Set the webhook URL to include <code>chat_id</code> as a query param, e.g.:<br><code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;</code></p>
             </div>
         `, '');
     },
@@ -4647,54 +4832,54 @@ const App = {
         this.openModal('Help', `
             <div class="card-detail-section">
                 <h4>Scheduled Tasks (Cron)</h4>
-                <p style="font-size:13px;color:var(--text);margin-bottom:8px">Set up two cron jobs to handle email notifications:</p>
-                <pre style="background:var(--surface-hover);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;white-space:pre-wrap"># Immediate notifications (every minute)
+                <p class="text-base text mb-2">Set up two cron jobs to handle email notifications:</p>
+                <pre class="code-block"># Immediate notifications (every minute)
 * * * * * curl -s "${baseUrl}?action=send_notifications&cron_token=YOUR_TOKEN" > /dev/null
 
 # Daily digest (once a day at 8 AM)
 0 8 * * * curl -s "${baseUrl}?action=send_digest&cron_token=YOUR_TOKEN" > /dev/null</pre>
-                <p style="font-size:12px;color:var(--text-light);margin-top:8px">Generate a cron token in <strong>App Settings &gt; Cron Token</strong>. The token authenticates the request without a browser session.</p>
-                <p style="font-size:12px;color:var(--text-light);margin-top:8px"><strong>send_notifications</strong> — sends individual emails to users with "Immediate" delivery preference.<br><strong>send_digest</strong> — sends a batched summary to users with "Daily summary" preference and to guest watchers.</p>
+                <p class="text-sm text-light mt-2">Generate a cron token in <strong>App Settings &gt; Cron Token</strong>. The token authenticates the request without a browser session.</p>
+                <p class="text-sm text-light mt-2"><strong>send_notifications</strong> — sends individual emails to users with "Immediate" delivery preference.<br><strong>send_digest</strong> — sends a batched summary to users with "Daily summary" preference and to guest watchers.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Webhooks</h4>
-                <p style="font-size:13px;color:var(--text);margin-bottom:8px">Configure webhooks in <strong>Project Settings</strong> to receive real-time notifications for:</p>
-                <ul style="font-size:13px;color:var(--text);padding-left:20px;margin:0">
+                <p class="text-base text mb-2">Configure webhooks in <strong>Project Settings</strong> to receive real-time notifications for:</p>
+                <ul class="text-base text pl-5 mb-0">
                     <li>New cards created</li>
                     <li>Comments posted</li>
                     <li>Cards updated</li>
                     <li>New projects created</li>
                 </ul>
-                <p style="font-size:12px;color:var(--text-light);margin-top:8px">Supported integrations: Slack (Incoming Webhooks), Telegram (Bot API), or any HTTP endpoint that accepts JSON POST requests.</p>
+                <p class="text-sm text-light mt-2">Supported integrations: Slack (Incoming Webhooks), Telegram (Bot API), or any HTTP endpoint that accepts JSON POST requests.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Watching</h4>
-                <p style="font-size:13px;color:var(--text)">Click <strong>Watch</strong> on a card to receive notifications when someone comments or updates it. You automatically watch cards you create or comment on.</p>
+                <p class="text-base text">Click <strong>Watch</strong> on a card to receive notifications when someone comments or updates it. You automatically watch cards you create or comment on.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Notification Preferences</h4>
-                <p style="font-size:13px;color:var(--text)">Go to <strong>Account</strong> to configure your notification email and choose between immediate delivery or a daily summary.</p>
+                <p class="text-base text">Go to <strong>Account</strong> to configure your notification email and choose between immediate delivery or a daily summary.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Keyboard Shortcuts</h4>
-                <table style="font-size:13px;width:100%;border-collapse:collapse">
-                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px;width:100px"><kbd>⌘</kbd> <kbd>K</kbd></td><td style="padding:6px 10px">Search cards</td></tr>
-                    <tr><td style="padding:6px 10px"><kbd>⌘</kbd> <kbd>S</kbd></td><td style="padding:6px 10px">Save (in any form)</td></tr>
-                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>N</kbd></td><td style="padding:6px 10px">Add card to first column</td></tr>
-                    <tr><td style="padding:6px 10px"><kbd>W</kbd></td><td style="padding:6px 10px">Watch/unwatch card or project</td></tr>
-                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>,</kbd></td><td style="padding:6px 10px">Project settings</td></tr>
-                    <tr><td style="padding:6px 10px"><kbd>A</kbd></td><td style="padding:6px 10px">Account</td></tr>
-                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>T</kbd></td><td style="padding:6px 10px">Team</td></tr>
-                    <tr><td style="padding:6px 10px"><kbd>G</kbd></td><td style="padding:6px 10px">App settings</td></tr>
-                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>?</kbd></td><td style="padding:6px 10px">Show this help</td></tr>
-                    <tr><td style="padding:6px 10px"><kbd>1</kbd> – <kbd>9</kbd></td><td style="padding:6px 10px">Open project by index (on project list)</td></tr>
-                    <tr style="background:var(--surface-hover)"><td style="padding:6px 10px"><kbd>Esc</kbd></td><td style="padding:6px 10px">Cancel / close modal / clear search</td></tr>
+                <table class="help-table">
+                    <tr><td><kbd>⌘</kbd> <kbd>K</kbd></td><td>Search cards</td></tr>
+                    <tr><td><kbd>⌘</kbd> <kbd>S</kbd></td><td>Save (in any form)</td></tr>
+                    <tr><td><kbd>N</kbd></td><td>Add card to first column</td></tr>
+                    <tr><td><kbd>W</kbd></td><td>Watch/unwatch card or project</td></tr>
+                    <tr><td><kbd>,</kbd></td><td>Project settings</td></tr>
+                    <tr><td><kbd>A</kbd></td><td>Account</td></tr>
+                    <tr><td><kbd>T</kbd></td><td>Team</td></tr>
+                    <tr><td><kbd>G</kbd></td><td>App settings</td></tr>
+                    <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
+                    <tr><td><kbd>1</kbd> – <kbd>9</kbd></td><td>Open project by index (on project list)</td></tr>
+                    <tr><td><kbd>Esc</kbd></td><td>Cancel / close modal / clear search</td></tr>
                 </table>
-                <p style="font-size:12px;color:var(--text-light);margin-top:8px">On Windows/Linux, use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.</p>
+                <p class="text-sm text-light mt-2">On Windows/Linux, use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Version</h4>
-                <p style="font-size:13px;color:var(--text-light)">#<?= APP_VERSION ?></p>
+                <p class="text-base text-light">#<?= APP_VERSION ?></p>
             </div>
         `, '');
     },
@@ -4849,7 +5034,7 @@ const App = {
 
     // INLINE DIALOGS
     confirmAction(message, onConfirm) {
-        this.openModal('Confirm', `<p style="font-size:14px">${message}</p>`, `
+        this.openModal('Confirm', `<p class="text-lg">${message}</p>`, `
             <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
             <button class="btn btn-danger" id="confirm-action-btn">Confirm</button>
         `);
@@ -4859,7 +5044,7 @@ const App = {
     promptInput(title, label, currentValue, onSave) {
         this.openModal(title, `
             <div class="form-group"><label>${label}</label>
-            <textarea id="prompt-input" style="min-height:80px">${this.esc(currentValue || '')}</textarea></div>
+            <textarea id="prompt-input" class="min-h-textarea">${this.esc(currentValue || '')}</textarea></div>
         `, `
             <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
             <button class="btn btn-primary" id="prompt-save-btn">Save</button>
