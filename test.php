@@ -2,7 +2,7 @@
 /**
  * Tasssks API Test Suite
  * Run: php test.php
- * Spins up its own test server using test.sqlite (never touches kanban.sqlite).
+ * Spins up its own test server using test.sqlite (never touches tasssks.sqlite).
  */
 error_reporting(E_ALL & ~E_DEPRECATED);
 
@@ -812,7 +812,7 @@ assert_true(stripos($headResponse, 'SameSite=Strict') !== false, 'Session cookie
 // ─── SECURITY: SENSITIVE FILE ACCESS ────────────────────
 section('Sensitive File Blocking');
 
-$sensitiveFiles = ['kanban.sqlite', 'test.sqlite', 'data.db', '.env', '.git/config'];
+$sensitiveFiles = ['tasssks.sqlite', 'test.sqlite', 'data.db', '.env', '.git/config'];
 foreach ($sensitiveFiles as $f) {
     $ch = curl_init();
     curl_setopt_array($ch, [

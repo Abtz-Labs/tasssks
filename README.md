@@ -56,7 +56,7 @@ just start 3000
 Run in background:
 
 ```
-just start 8080 background
+just start 1010 background
 ```
 
 Stop the server:
@@ -68,7 +68,7 @@ just stop
 Or directly:
 
 ```
-php -S localhost:8080 index.php
+php -S localhost:1010 index.php
 ```
 
 ## User Manual
@@ -145,20 +145,20 @@ Single-letter shortcuts work when no input is focused. On Windows/Linux, use `Ct
 
 For production, use Apache or Nginx with PHP-FPM. The key security considerations:
 
-- **Database location.** By default the SQLite file (`kanban.sqlite`) is created in the same directory as `index.php`. Set the `TASSSKS_DB_FILE` environment variable to place it outside the web root (recommended). Examples:
+- **Database location.** By default the SQLite file (`tasssks.sqlite`) is created in the same directory as `index.php`. Set the `TASSSKS_DB_FILE` environment variable to place it outside the web root (recommended). Examples:
 
   ```bash
   # PHP built-in server (dev)
-  TASSSKS_DB_FILE=/path/to/data/kanban.sqlite php -S localhost:8080 index.php
+  TASSSKS_DB_FILE=/path/to/data/tasssks.sqlite php -S localhost:1010 index.php
 
   # Apache (.htaccess or vhost)
-  SetEnv TASSSKS_DB_FILE /var/data/kanban.sqlite
+  SetEnv TASSSKS_DB_FILE /var/data/tasssks.sqlite
 
   # Nginx + PHP-FPM (server or location block)
-  fastcgi_param TASSSKS_DB_FILE /var/data/kanban.sqlite;
+  fastcgi_param TASSSKS_DB_FILE /var/data/tasssks.sqlite;
 
   # Docker / systemd
-  Environment=TASSSKS_DB_FILE=/var/data/kanban.sqlite
+  Environment=TASSSKS_DB_FILE=/var/data/tasssks.sqlite
   ```
 - **Deny direct file access.** The application blocks requests to `.sqlite`, `.env`, and `.git` paths internally, but your web server should also enforce this as a second layer.
 - **Do not deploy `test.php` to production.** It is a development-only file.

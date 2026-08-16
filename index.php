@@ -28,7 +28,7 @@ if (php_sapi_name() === 'cli-server') {
 
 define('APP_NAME', 'Tasssks');
 define('APP_VERSION', '0.1.0');
-define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/kanban.sqlite');
+define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', 10 * 1024 * 1024); // 10MB
 define('IMAGE_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
@@ -2846,6 +2846,16 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 .modal-footer:has(:only-child) { justify-content: flex-end; }
 .modal-footer:empty { border-top: none; padding: 0; }
 
+/* Settings tabs */
+.settings-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin:-24px -24px 20px; padding:0 24px; }
+.settings-tab {
+    padding:10px 16px; font-size:13px; font-weight:500; cursor:pointer;
+    background:none; border:none; border-bottom:2px solid transparent;
+    color:var(--text-muted); transition:all var(--transition);
+}
+.settings-tab:hover { color:var(--text); }
+.settings-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+
 /* Card detail */
 .card-detail-section { margin-bottom: 24px; }
 .card-detail-section h4 {
@@ -4310,58 +4320,77 @@ const App = {
             this.updateBrand();
 
             this.openModal('App Settings', `
-                <div class="card-detail-section"><h4>App Name</h4>
-                    <div class="field-addons">
-                        <input type="text" id="app-name" placeholder="App name" value="${this.esc(this.appName)}">
-                        <button class="btn btn-primary" onclick="App.setAppName()">Save</button>
+                <div class="settings-tabs">
+                    <button class="settings-tab active" onclick="App.switchSettingsTab('general')">General</button>
+                    <button class="settings-tab" onclick="App.switchSettingsTab('smtp')">SMTP</button>
+                    <button class="settings-tab" onclick="App.switchSettingsTab('cron')">Cron</button>
+                </div>
+                <div id="tab-general" class="settings-tab-content">
+                    <div class="card-detail-section"><h4>App Name</h4>
+                        <div class="field-addons">
+                            <input type="text" id="app-name" placeholder="App name" value="${this.esc(this.appName)}">
+                            <button class="btn btn-primary" onclick="App.setAppName()">Save</button>
+                        </div>
                     </div>
                 </div>
-                <div class="card-detail-section"><h4>SMTP (Email Notifications)</h4>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                        <div class="form-group"><label>Host</label>
-                            <input type="text" id="smtp-host" value="${this.esc(smtp.smtp_host || '')}" placeholder="smtp.example.com">
+                <div id="tab-smtp" class="settings-tab-content" style="display:none">
+                    <div class="card-detail-section"><h4>SMTP (Email Notifications)</h4>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                            <div class="form-group"><label>Host</label>
+                                <input type="text" id="smtp-host" value="${this.esc(smtp.smtp_host || '')}" placeholder="smtp.example.com">
+                            </div>
+                            <div class="form-group"><label>Port</label>
+                                <input type="text" id="smtp-port" value="${smtp.smtp_port || 587}" placeholder="587">
+                            </div>
+                            <div class="form-group"><label>Username</label>
+                                <input type="text" id="smtp-user" value="${this.esc(smtp.smtp_user || '')}" placeholder="user@example.com">
+                            </div>
+                            <div class="form-group"><label>Password</label>
+                                <input type="password" id="smtp-pass" placeholder="${smtp.smtp_pass_set ? '(unchanged)' : 'SMTP password'}">
+                            </div>
+                            <div class="form-group"><label>From Email</label>
+                                <input type="email" id="smtp-from-email" value="${this.esc(smtp.smtp_from_email || '')}" placeholder="noreply@example.com">
+                            </div>
+                            <div class="form-group"><label>From Name</label>
+                                <input type="text" id="smtp-from-name" value="${this.esc(smtp.smtp_from_name || '')}" placeholder="Tasssks">
+                            </div>
                         </div>
-                        <div class="form-group"><label>Port</label>
-                            <input type="text" id="smtp-port" value="${smtp.smtp_port || 587}" placeholder="587">
+                        <div class="form-group"><label>Encryption</label>
+                            <select id="smtp-encryption" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--radius)">
+                                <option value="tls" ${smtp.smtp_encryption === 'tls' ? 'selected' : ''}>TLS (STARTTLS)</option>
+                                <option value="ssl" ${smtp.smtp_encryption === 'ssl' ? 'selected' : ''}>SSL</option>
+                                <option value="none" ${smtp.smtp_encryption === 'none' ? 'selected' : ''}>None</option>
+                            </select>
                         </div>
-                        <div class="form-group"><label>Username</label>
-                            <input type="text" id="smtp-user" value="${this.esc(smtp.smtp_user || '')}" placeholder="user@example.com">
+                        <div style="display:flex;gap:8px;margin-top:8px">
+                            <button class="btn btn-primary" onclick="App.saveSmtp()">Save SMTP</button>
+                            <button class="btn btn-ghost" onclick="App.testSmtp()">Send Test Email</button>
                         </div>
-                        <div class="form-group"><label>Password</label>
-                            <input type="password" id="smtp-pass" placeholder="${smtp.smtp_pass_set ? '(unchanged)' : 'SMTP password'}">
-                        </div>
-                        <div class="form-group"><label>From Email</label>
-                            <input type="email" id="smtp-from-email" value="${this.esc(smtp.smtp_from_email || '')}" placeholder="noreply@example.com">
-                        </div>
-                        <div class="form-group"><label>From Name</label>
-                            <input type="text" id="smtp-from-name" value="${this.esc(smtp.smtp_from_name || '')}" placeholder="Tasssks">
-                        </div>
+                        <p id="smtp-msg" class="hidden" style="font-size:12px;margin-top:8px"></p>
                     </div>
-                    <div class="form-group"><label>Encryption</label>
-                        <select id="smtp-encryption" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--radius)">
-                            <option value="tls" ${smtp.smtp_encryption === 'tls' ? 'selected' : ''}>TLS (STARTTLS)</option>
-                            <option value="ssl" ${smtp.smtp_encryption === 'ssl' ? 'selected' : ''}>SSL</option>
-                            <option value="none" ${smtp.smtp_encryption === 'none' ? 'selected' : ''}>None</option>
-                        </select>
-                    </div>
-                    <div style="display:flex;gap:8px;margin-top:8px">
-                        <button class="btn btn-primary" onclick="App.saveSmtp()">Save SMTP</button>
-                        <button class="btn btn-ghost" onclick="App.testSmtp()">Send Test Email</button>
-                    </div>
-                    <p id="smtp-msg" class="hidden" style="font-size:12px;margin-top:8px"></p>
                 </div>
-                <div class="card-detail-section"><h4>Cron Token</h4>
-                    <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">Use this token to authenticate the daily digest cron job without a session.</p>
-                    <div class="field-addons">
-                        <input type="text" id="cron-token" value="${this.esc(smtp.cron_token || '')}" readonly style="font-family:monospace;font-size:12px">
-                        <button class="btn btn-ghost" onclick="App.generateCronToken()">Generate</button>
+                <div id="tab-cron" class="settings-tab-content" style="display:none">
+                    <div class="card-detail-section"><h4>Cron Token</h4>
+                        <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">Use this token to authenticate the daily digest cron job without a session.</p>
+                        <div class="field-addons">
+                            <input type="text" id="cron-token" value="${this.esc(smtp.cron_token || '')}" readonly style="font-family:monospace;font-size:12px">
+                            <button class="btn btn-ghost" onclick="App.generateCronToken()">Generate</button>
+                        </div>
+                        <p style="font-size:11px;color:var(--text-light);margin-top:6px">Use with: <code>?action=send_notifications</code> and <code>?action=send_digest</code></p>
+                        ${smtp.last_digest_at ? `<p style="font-size:11px;color:var(--text-light);margin-top:6px">Last digest run: <strong>${smtp.last_digest_at}</strong></p>` : '<p style="font-size:11px;color:var(--text-light);margin-top:6px">Digest has not run yet.</p>'}
                     </div>
-                    <p style="font-size:11px;color:var(--text-light);margin-top:6px">Use with: <code>?action=send_notifications</code> and <code>?action=send_digest</code></p>
-                    ${smtp.last_digest_at ? `<p style="font-size:11px;color:var(--text-light);margin-top:6px">Last digest run: <strong>${smtp.last_digest_at}</strong></p>` : '<p style="font-size:11px;color:var(--text-light);margin-top:6px">Digest has not run yet.</p>'}
                 </div>
             `, '');
             setTimeout(() => $('#app-name').focus(), 50);
         });
+    },
+
+    switchSettingsTab(tab) {
+        const tabs = ['general', 'smtp', 'cron'];
+        const idx = tabs.indexOf(tab);
+        $('.settings-tab').removeClass('active').eq(idx).addClass('active');
+        $('.settings-tab-content').hide();
+        $(`#tab-${tab}`).show();
     },
 
     saveSmtp() {
@@ -4450,59 +4479,78 @@ const App = {
             const guestCreate = this.currentProject.guest_can_create_cards ? 'checked' : '';
             const guestSort = this.currentProject.guest_can_sort_cards ? 'checked' : '';
             this.openModal('Project Settings', `
-                <div class="card-detail-section"><h4>Project Name</h4>
-                    <div class="field-addons">
-                        <input type="text" id="project-name" value="${this.esc(this.currentProject.name)}">
-                        <button class="btn btn-primary" onclick="App.updateProjectName()">Save</button>
+                <div class="settings-tabs">
+                    <button class="settings-tab active" onclick="App.switchProjectSettingsTab('general')">General</button>
+                    <button class="settings-tab" onclick="App.switchProjectSettingsTab('webhooks')">Webhooks</button>
+                    <button class="settings-tab" onclick="App.switchProjectSettingsTab('guests')">Guests</button>
+                </div>
+                <div id="ptab-general" class="settings-tab-content">
+                    <div class="card-detail-section"><h4>Project Name</h4>
+                        <div class="field-addons">
+                            <input type="text" id="project-name" value="${this.esc(this.currentProject.name)}">
+                            <button class="btn btn-primary" onclick="App.updateProjectName()">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-detail-section"><h4>Tags</h4>
+                    <div class="card-tags mb-3">${this.tags.map(t => `
+                        <span class="tag" style="background:${t.color}">${this.esc(t.name)}
+                            <span class="tag-delete" onclick="App.deleteTag(${t.id})">&times;</span>
+                        </span>
+                    `).join('') || '<em style="color:var(--text-light)">No tags</em>'}</div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                        <input type="text" id="settings-tag-name" placeholder="Tag name" style="flex:1;min-width:120px">
+                        ${['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => `<span style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid transparent;display:inline-block;flex-shrink:0" onclick="$(this).parent().find('span').css('border-color','transparent');$(this).css('border-color','var(--text)');$('#settings-tag-color').val('${c}')"></span>`).join('')}
+                        <input type="hidden" id="settings-tag-color" value="#3b82f6">
+                        <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="App.createTagFromSettings()">Add</button>
+                    </div>
                     </div>
                 </div>
-                <div class="card-detail-section"><h4>Webhooks <a href="#" onclick="event.preventDefault();App.showWebhookPayloads()" style="font-size:11px;font-weight:400;margin-left:8px">View payload format</a></h4>
-                    <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">Receive notifications via Slack, Telegram, or any HTTP endpoint.</p>
-                    ${webhookRows}
-                    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
-                        <select id="webhook-type" style="padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px">
-                            <option value="generic">Generic</option>
-                            <option value="slack">Slack</option>
-                            <option value="telegram">Telegram</option>
-                        </select>
-                        <input type="text" id="webhook-url" placeholder="https://hooks.slack.com/..." style="flex:1;min-width:200px">
-                        <button class="btn btn-primary btn-sm" onclick="App.createWebhook()">Add</button>
+                <div id="ptab-webhooks" class="settings-tab-content" style="display:none">
+                    <div class="card-detail-section"><h4>Webhooks <a href="#" onclick="event.preventDefault();App.showWebhookPayloads()" style="font-size:11px;font-weight:400;margin-left:8px">View payload format</a></h4>
+                        <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">Receive notifications via Slack, Telegram, or any HTTP endpoint.</p>
+                        ${webhookRows}
+                        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+                            <select id="webhook-type" style="padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px">
+                                <option value="generic">Generic</option>
+                                <option value="slack">Slack</option>
+                                <option value="telegram">Telegram</option>
+                            </select>
+                            <input type="text" id="webhook-url" placeholder="https://hooks.slack.com/..." style="flex:1;min-width:200px">
+                            <button class="btn btn-primary btn-sm" onclick="App.createWebhook()">Add</button>
+                        </div>
                     </div>
                 </div>
-                <div class="card-detail-section"><h4>Guest Permissions</h4>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:14px;font-weight:400;color:var(--text)">
-                        <input type="checkbox" id="guest-create-cards" ${guestCreate} onchange="App.updateGuestPerm('guest_can_create_cards', this.checked)">
-                        Allow guests to create cards in the first column
-                    </label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:400;color:var(--text)">
-                        <input type="checkbox" id="guest-sort-cards" ${guestSort} onchange="App.updateGuestPerm('guest_can_sort_cards', this.checked)">
-                        Allow guests to sort cards in the first column
-                    </label>
-                </div>
-                <div class="card-detail-section"><h4>Guest Access</h4>
-                    ${guestRows}
-                    <div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">
-                        <input type="text" id="new-guest-name" placeholder="Guest name" style="flex:1;min-width:120px">
-                        <input type="email" id="new-guest-email" placeholder="Email (optional)" style="flex:1;min-width:150px">
-                        <button class="btn btn-primary btn-sm" onclick="App.createGuest()">Add Guest</button>
+                <div id="ptab-guests" class="settings-tab-content" style="display:none">
+                    <div class="card-detail-section"><h4>Guest Permissions</h4>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:14px;font-weight:400;color:var(--text)">
+                            <input type="checkbox" id="guest-create-cards" ${guestCreate} onchange="App.updateGuestPerm('guest_can_create_cards', this.checked)">
+                            Allow guests to create cards in the first column
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:400;color:var(--text)">
+                            <input type="checkbox" id="guest-sort-cards" ${guestSort} onchange="App.updateGuestPerm('guest_can_sort_cards', this.checked)">
+                            Allow guests to sort cards in the first column
+                        </label>
                     </div>
-                </div>
-                <div class="card-detail-section"><h4>Tags</h4>
-                <div class="card-tags mb-3">${this.tags.map(t => `
-                    <span class="tag" style="background:${t.color}">${this.esc(t.name)}
-                        <span class="tag-delete" onclick="App.deleteTag(${t.id})">&times;</span>
-                    </span>
-                `).join('') || '<em style="color:var(--text-light)">No tags</em>'}</div>
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                    <input type="text" id="settings-tag-name" placeholder="Tag name" style="flex:1;min-width:120px">
-                    ${['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => `<span style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid transparent;display:inline-block;flex-shrink:0" onclick="$(this).parent().find('span').css('border-color','transparent');$(this).css('border-color','var(--text)');$('#settings-tag-color').val('${c}')"></span>`).join('')}
-                    <input type="hidden" id="settings-tag-color" value="#3b82f6">
-                    <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="App.createTagFromSettings()">Add</button>
-                </div>
+                    <div class="card-detail-section"><h4>Guest Access</h4>
+                        ${guestRows}
+                        <div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">
+                            <input type="text" id="new-guest-name" placeholder="Guest name" style="flex:1;min-width:120px">
+                            <input type="email" id="new-guest-email" placeholder="Email (optional)" style="flex:1;min-width:150px">
+                            <button class="btn btn-primary btn-sm" onclick="App.createGuest()">Add Guest</button>
+                        </div>
+                    </div>
                 </div>
             `, '');
             setTimeout(() => $('#project-name').focus(), 50);
         });
+    },
+
+    switchProjectSettingsTab(tab) {
+        const tabs = ['general', 'webhooks', 'guests'];
+        const idx = tabs.indexOf(tab);
+        $('.settings-tab').removeClass('active').eq(idx).addClass('active');
+        $('.settings-tab-content').hide();
+        $(`#ptab-${tab}`).show();
     },
 
     updateProjectName() {
