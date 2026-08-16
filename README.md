@@ -53,6 +53,18 @@ Or with a custom port:
 just start 3000
 ```
 
+Run in background:
+
+```
+just start 8080 background
+```
+
+Stop the server:
+
+```
+just stop
+```
+
 Or directly:
 
 ```
