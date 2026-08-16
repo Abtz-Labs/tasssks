@@ -3,6 +3,6 @@
 *.sqlite
 *.db
 
-# Agent files (if any)
-.claude
-.opencode
+# Server PID file
+.server.pid
+
