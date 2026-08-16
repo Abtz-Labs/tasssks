@@ -4335,30 +4335,38 @@ const App = {
             const notif = notifRes[0] || notifRes;
             this.user = status.user;
             this.openModal('My Account', `
+                <div class="settings-tabs">
+                    <button class="settings-tab active" onclick="App.switchAccountTab('general')">General</button>
+                    <button class="settings-tab" onclick="App.switchAccountTab('notifications')">Notifications</button>
+                </div>
                 <form onsubmit="event.preventDefault();App.saveAccount()">
-                    <div class="form-group"><label>Name</label>
-                        <input type="text" id="account-name" value="${this.esc(this.user.name)}">
-                    </div>
-                    <div class="form-group"><label>Email</label>
-                        <input type="text" id="account-email" value="${this.esc(this.user.email)}">
-                    </div>
-                    <div class="card-detail-section mt-4"><h4>Change Password</h4>
-                        <div class="form-group"><label>Current Password</label>
-                            <input type="password" id="account-current-pw" placeholder="Required to change password" autocomplete="current-password">
+                    <div id="atab-general" class="settings-tab-content">
+                        <div class="form-group"><label>Name</label>
+                            <input type="text" id="account-name" value="${this.esc(this.user.name)}">
                         </div>
-                        <div class="form-group"><label>New Password</label>
-                            <input type="password" id="account-new-pw" placeholder="Leave blank to keep current" autocomplete="new-password">
+                        <div class="form-group"><label>Email</label>
+                            <input type="text" id="account-email" value="${this.esc(this.user.email)}">
+                        </div>
+                        <div class="card-detail-section mt-4"><h4>Change Password</h4>
+                            <div class="form-group"><label>Current Password</label>
+                                <input type="password" id="account-current-pw" placeholder="Required to change password" autocomplete="current-password">
+                            </div>
+                            <div class="form-group"><label>New Password</label>
+                                <input type="password" id="account-new-pw" placeholder="Leave blank to keep current" autocomplete="new-password">
+                            </div>
                         </div>
                     </div>
-                    <div class="card-detail-section mt-4"><h4>Notification Preferences</h4>
-                        <div class="form-group"><label>Notification Email</label>
-                            <input type="email" id="notif-email" value="${this.esc(notif.email || '')}" placeholder="Leave blank to use account email">
-                        </div>
-                        <div class="form-group"><label>Delivery</label>
-                            <select id="notif-delivery" class="select-full">
-                                <option value="immediate" ${notif.delivery === 'immediate' ? 'selected' : ''}>Immediate</option>
-                                <option value="daily" ${notif.delivery === 'daily' ? 'selected' : ''}>Daily summary</option>
-                            </select>
+                    <div id="atab-notifications" class="settings-tab-content hidden">
+                        <div class="card-detail-section"><h4>Notification Preferences</h4>
+                            <div class="form-group"><label>Notification Email</label>
+                                <input type="email" id="notif-email" value="${this.esc(notif.email || '')}" placeholder="Leave blank to use account email">
+                            </div>
+                            <div class="form-group"><label>Delivery</label>
+                                <select id="notif-delivery" class="select-full">
+                                    <option value="immediate" ${notif.delivery === 'immediate' ? 'selected' : ''}>Immediate</option>
+                                    <option value="daily" ${notif.delivery === 'daily' ? 'selected' : ''}>Daily summary</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     <p id="account-error" class="hidden text-danger text-base mb-3"></p>
@@ -4406,6 +4414,14 @@ const App = {
         });
     },
 
+    switchAccountTab(tab) {
+        const tabs = ['general', 'notifications'];
+        const idx = tabs.indexOf(tab);
+        $('.settings-tab').removeClass('active').eq(idx).addClass('active');
+        $('.settings-tab-content').addClass('hidden');
+        $(`#atab-${tab}`).removeClass('hidden');
+    },
+
     // TEAM (admin only)
     showTeam() {
         this.api('team_list').done(users => {
@@ -4429,16 +4445,24 @@ const App = {
             }).join('');
 
             this.openModal('Team', `
-                <div class="card-detail-section">${rows}</div>
-                <div class="card-detail-section"><h4>Add Team Member</h4>
-                    <div class="form-group"><label>Name</label><input type="text" id="team-add-name" placeholder="Name"></div>
-                    <div class="form-group"><label>Email</label><input type="text" id="team-add-email" placeholder="email@example.com"></div>
-                    <div class="form-group"><label>Password</label><input type="password" id="team-add-pw" placeholder="Initial password (min 6 chars)" autocomplete="new-password"></div>
-                    <div class="form-group"><label>Role</label>
-                        <select id="team-add-role"><option value="member">Member</option><option value="admin">Admin</option></select>
+                <div class="settings-tabs">
+                    <button class="settings-tab active" onclick="App.switchTeamTab('members')">Members</button>
+                    <button class="settings-tab" onclick="App.switchTeamTab('add')">Add</button>
+                </div>
+                <div id="ttab-members" class="settings-tab-content">
+                    <div class="card-detail-section">${rows}</div>
+                </div>
+                <div id="ttab-add" class="settings-tab-content hidden">
+                    <div class="card-detail-section"><h4>Add Team Member</h4>
+                        <div class="form-group"><label>Name</label><input type="text" id="team-add-name" placeholder="Name"></div>
+                        <div class="form-group"><label>Email</label><input type="text" id="team-add-email" placeholder="email@example.com"></div>
+                        <div class="form-group"><label>Password</label><input type="password" id="team-add-pw" placeholder="Initial password (min 6 chars)" autocomplete="new-password"></div>
+                        <div class="form-group"><label>Role</label>
+                            <select id="team-add-role"><option value="member">Member</option><option value="admin">Admin</option></select>
+                        </div>
+                        <p id="team-error" class="hidden text-danger text-base mb-3"></p>
+                        <button class="btn btn-primary" onclick="App.teamAdd()">Add Member</button>
                     </div>
-                    <p id="team-error" class="hidden text-danger text-base mb-3"></p>
-                    <button class="btn btn-primary" onclick="App.teamAdd()">Add Member</button>
                 </div>
             `, '');
         });
@@ -4459,6 +4483,14 @@ const App = {
             const msg = xhr.responseJSON?.error || 'Failed to add member';
             $('#team-error').text(msg).removeClass('hidden');
         });
+    },
+
+    switchTeamTab(tab) {
+        const tabs = ['members', 'add'];
+        const idx = tabs.indexOf(tab);
+        $('.settings-tab').removeClass('active').eq(idx).addClass('active');
+        $('.settings-tab-content').addClass('hidden');
+        $(`#ttab-${tab}`).removeClass('hidden');
     },
 
     teamRemove(id, name) {
