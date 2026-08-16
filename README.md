@@ -56,7 +56,7 @@ just start 3000
 Run in background:
 
 ```
-just start 1010 background
+just start 2020 background
 ```
 
 Stop the server:
@@ -68,7 +68,7 @@ just stop
 Or directly:
 
 ```
-php -S localhost:1010 index.php
+php -S localhost:2020 index.php
 ```
 
 ## User Manual
@@ -149,7 +149,7 @@ For production, use Apache or Nginx with PHP-FPM. The key security consideration
 
   ```bash
   # PHP built-in server (dev)
-  TASSSKS_DB_FILE=/path/to/data/tasssks.sqlite php -S localhost:1010 index.php
+  TASSSKS_DB_FILE=/path/to/data/tasssks.sqlite php -S localhost:2020 index.php
 
   # Apache (.htaccess or vhost)
   SetEnv TASSSKS_DB_FILE /var/data/tasssks.sqlite

@@ -3,7 +3,7 @@ default:
     @just --list
 
 # Dev server
-start port="1010" mode="foreground":
+start port="2020" mode="foreground":
     #!/usr/bin/env bash
     if [ "{{mode}}" = "foreground" ]; then
         php -S localhost:{{port}} index.php
