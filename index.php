@@ -208,69 +208,56 @@ function initDatabase(): void {
 }
 
 function migrateDatabase(PDO $db): void {
-    // Add user_id column to comments if missing (migration from old schema)
-    $cols = $db->query("PRAGMA table_info(comments)")->fetchAll();
-    $hasUserId = false;
-    foreach ($cols as $col) {
-        if ($col['name'] === 'user_id') { $hasUserId = true; break; }
-    }
-    if (!$hasUserId) {
-        $db->exec("ALTER TABLE comments ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+    $version = (int) $db->query('PRAGMA user_version')->fetchColumn();
+
+    // Existing DB created before version-based migrations — stamp and skip
+    if ($version === 0 && $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetch()) {
+        // Run any column additions that may or may not have been applied
+        $cols = array_column($db->query("PRAGMA table_info(comments)")->fetchAll(), 'name');
+        if (!in_array('user_id', $cols)) {
+            $db->exec("ALTER TABLE comments ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+        }
+        $cols = array_column($db->query("PRAGMA table_info(cards)")->fetchAll(), 'name');
+        if (!in_array('author_name', $cols)) {
+            $db->exec("ALTER TABLE cards ADD COLUMN author_name TEXT DEFAULT ''");
+        }
+        $cols = array_column($db->query("PRAGMA table_info(projects)")->fetchAll(), 'name');
+        if (!in_array('guest_can_create_cards', $cols)) {
+            $db->exec("ALTER TABLE projects ADD COLUMN guest_can_create_cards INTEGER DEFAULT 0");
+        }
+        if (!in_array('guest_can_sort_cards', $cols)) {
+            $db->exec("ALTER TABLE projects ADD COLUMN guest_can_sort_cards INTEGER DEFAULT 0");
+        }
+        $cols = array_column($db->query("PRAGMA table_info(guests)")->fetchAll(), 'name');
+        if (!in_array('email', $cols)) {
+            $db->exec("ALTER TABLE guests ADD COLUMN email TEXT DEFAULT ''");
+        }
+        // Migrate last_seen schema if needed
+        $lsCols = array_column($db->query("PRAGMA table_info(last_seen)")->fetchAll(), 'name');
+        if (in_array('project_id', $lsCols)) {
+            $db->exec("DROP TABLE IF EXISTS last_seen");
+            $db->exec("CREATE TABLE last_seen (
+                user_id INTEGER NOT NULL, card_id INTEGER NOT NULL, seen_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, card_id), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )");
+        }
+        $version = 1;
     }
 
-    // Migrate last_seen from (project_id, card_id) to (user_id, card_id) if needed
-    $lsCols = $db->query("PRAGMA table_info(last_seen)")->fetchAll();
-    $hasProjectId = false;
-    foreach ($lsCols as $col) {
-        if ($col['name'] === 'project_id') { $hasProjectId = true; break; }
-    }
-    if ($hasProjectId) {
-        $db->exec("DROP TABLE IF EXISTS last_seen");
-        $db->exec("
-            CREATE TABLE IF NOT EXISTS last_seen (
-                user_id INTEGER NOT NULL,
-                card_id INTEGER NOT NULL,
-                seen_at TEXT NOT NULL,
-                PRIMARY KEY (user_id, card_id),
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        ");
+    // Version 1 → 2: API tokens table
+    if ($version < 2) {
+        $db->exec("CREATE TABLE IF NOT EXISTS api_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            last_used_at TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )");
     }
 
-    // Add author_name column to cards
-    $cardCols = $db->query("PRAGMA table_info(cards)")->fetchAll();
-    $hasAuthorName = false;
-    foreach ($cardCols as $col) {
-        if ($col['name'] === 'author_name') { $hasAuthorName = true; break; }
-    }
-    if (!$hasAuthorName) {
-        $db->exec("ALTER TABLE cards ADD COLUMN author_name TEXT DEFAULT ''");
-    }
-
-    // Add guest permission columns to projects
-    $projCols = $db->query("PRAGMA table_info(projects)")->fetchAll();
-    $hasGuestCreate = false;
-    $hasGuestSort = false;
-    foreach ($projCols as $col) {
-        if ($col['name'] === 'guest_can_create_cards') $hasGuestCreate = true;
-        if ($col['name'] === 'guest_can_sort_cards') $hasGuestSort = true;
-    }
-    if (!$hasGuestCreate) {
-        $db->exec("ALTER TABLE projects ADD COLUMN guest_can_create_cards INTEGER DEFAULT 0");
-    }
-    if (!$hasGuestSort) {
-        $db->exec("ALTER TABLE projects ADD COLUMN guest_can_sort_cards INTEGER DEFAULT 0");
-    }
-
-    // Add email column to guests
-    $guestCols = $db->query("PRAGMA table_info(guests)")->fetchAll();
-    $hasGuestEmail = false;
-    foreach ($guestCols as $col) {
-        if ($col['name'] === 'email') { $hasGuestEmail = true; break; }
-    }
-    if (!$hasGuestEmail) {
-        $db->exec("ALTER TABLE guests ADD COLUMN email TEXT DEFAULT ''");
-    }
+    $db->exec('PRAGMA user_version = 2');
 }
 
 // ============================================================================
@@ -511,8 +498,27 @@ initDatabase();
 
 $action = $_GET['action'] ?? '';
 
+// Bearer token authentication (API tokens)
+$_tokenAuth = false;
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+if (str_starts_with($authHeader, 'Bearer ')) {
+    $rawToken = substr($authHeader, 7);
+    $hash = hash('sha256', $rawToken);
+    $db = getDb();
+    $stmt = $db->prepare("SELECT user_id FROM api_tokens WHERE token_hash = ?");
+    $stmt->execute([$hash]);
+    $tokenRow = $stmt->fetch();
+    if ($tokenRow) {
+        $_SESSION['user_id'] = $tokenRow['user_id'];
+        $_tokenAuth = true;
+        $db->prepare("UPDATE api_tokens SET last_used_at = datetime('now') WHERE token_hash = ?")->execute([$hash]);
+    } else {
+        jsonResponse(['error' => 'Invalid API token'], 401);
+    }
+}
+
 if ($action) {
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['auth_login', 'auth_setup'])) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$_tokenAuth && !in_array($action, ['auth_login', 'auth_setup'])) {
         verifyCsrf();
     }
     match ($action) {
@@ -524,6 +530,9 @@ if ($action) {
 
         // Account
         'account_update' => apiAccountUpdate(),
+        'list_api_tokens' => apiListApiTokens(),
+        'create_api_token' => apiCreateApiToken(),
+        'revoke_api_token' => apiRevokeApiToken(),
 
         // Team (admin only)
         'team_list' => apiTeamList(),
@@ -795,6 +804,51 @@ function apiAccountUpdate(): void {
         $db->prepare("UPDATE users SET name = ?, email = ? WHERE id = ?")->execute([$name, $email, $user['id']]);
     }
 
+    jsonResponse(['ok' => true]);
+}
+
+// ============================================================================
+// API: API TOKENS
+// ============================================================================
+
+function apiListApiTokens(): void {
+    requireAuth();
+    $user = getCurrentUser();
+    $db = getDb();
+    $stmt = $db->prepare("SELECT id, name, last_used_at, created_at FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC");
+    $stmt->execute([$user['id']]);
+    jsonResponse($stmt->fetchAll());
+}
+
+function apiCreateApiToken(): void {
+    requireAuth();
+    $user = getCurrentUser();
+    $input = getInput();
+    $name = trim($input['name'] ?? '');
+    if (!$name) jsonResponse(['error' => 'Token name is required'], 400);
+
+    $rawToken = bin2hex(random_bytes(32));
+    $hash = hash('sha256', $rawToken);
+
+    $db = getDb();
+    $stmt = $db->prepare("INSERT INTO api_tokens (user_id, name, token_hash) VALUES (?, ?, ?)");
+    $stmt->execute([$user['id'], $name, $hash]);
+
+    jsonResponse(['token' => $rawToken, 'id' => $db->lastInsertId(), 'name' => $name]);
+}
+
+function apiRevokeApiToken(): void {
+    requireAuth();
+    $user = getCurrentUser();
+    $input = getInput();
+    $id = (int) ($input['id'] ?? 0);
+    if (!$id) jsonResponse(['error' => 'Token ID is required'], 400);
+
+    $db = getDb();
+    $stmt = $db->prepare("DELETE FROM api_tokens WHERE id = ? AND user_id = ?");
+    $stmt->execute([$id, $user['id']]);
+
+    if ($stmt->rowCount() === 0) jsonResponse(['error' => 'Token not found'], 404);
     jsonResponse(['ok' => true]);
 }
 
@@ -3107,6 +3161,16 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
     margin-bottom: 6px;
 }
 
+/* Form row (inline) */
+.form-row { display: flex; gap: 8px; align-items: center; }
+.form-row input { flex: 1; }
+
+/* API token rows */
+.api-token-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 6px; }
+.token-input { font-family: monospace; font-size: 12px; flex: 1; }
+.btn-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); cursor: pointer; color: var(--text-muted); }
+.btn-icon:hover { background: var(--surface-hover); color: var(--text); }
+
 /* Badge patterns */
 .badge-admin {
     background: #dbeafe;
@@ -4442,15 +4506,27 @@ const App = {
     showAccount() {
         $.when(
             this.api('auth_status'),
-            this.api('get_notification_settings')
-        ).done((statusRes, notifRes) => {
+            this.api('get_notification_settings'),
+            this.api('list_api_tokens')
+        ).done((statusRes, notifRes, tokensRes) => {
             const status = statusRes[0] || statusRes;
             const notif = notifRes[0] || notifRes;
+            const tokens = tokensRes[0] || tokensRes;
             this.user = status.user;
+            const tokenRows = tokens.length ? tokens.map(t => `
+                <div class="api-token-row">
+                    <div>
+                        <strong>${this.esc(t.name)}</strong>
+                        <span class="text-muted text-sm ml-2">Created ${t.created_at}${t.last_used_at ? ' · Last used ' + t.last_used_at : ''}</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="App.revokeApiToken(${t.id},'${this.escAttr(t.name)}')">Revoke</button>
+                </div>
+            `).join('') : '<p class="text-muted">No API tokens yet.</p>';
             this.openModal('My Account', `
                 <div class="settings-tabs">
                     <button class="settings-tab active" onclick="App.switchAccountTab('general')">General</button>
                     <button class="settings-tab" onclick="App.switchAccountTab('notifications')">Notifications</button>
+                    <button class="settings-tab" onclick="App.switchAccountTab('tokens')">API Tokens</button>
                 </div>
                 <form onsubmit="event.preventDefault();App.saveAccount()">
                     <div id="atab-general" class="settings-tab-content">
@@ -4480,6 +4556,26 @@ const App = {
                                     <option value="daily" ${notif.delivery === 'daily' ? 'selected' : ''}>Daily summary</option>
                                 </select>
                             </div>
+                        </div>
+                    </div>
+                    <div id="atab-tokens" class="settings-tab-content hidden">
+                        <div class="card-detail-section"><h4>API Tokens</h4>
+                            <p class="text-muted text-sm mb-3">Tokens allow external tools and agents to access the API on your behalf.</p>
+                            <div id="new-token-form" class="form-group form-row">
+                                <input type="text" id="new-token-name" placeholder="Token name (e.g. Claude Code)">
+                                <button type="button" class="btn btn-primary btn-sm" onclick="App.createApiToken()">Generate</button>
+                            </div>
+                            <div id="new-token-display" class="hidden form-group form-row">
+                                <input type="text" id="new-token-value" readonly class="token-input">
+                                <button type="button" class="btn btn-sm btn-icon" onclick="App.copyApiToken()" title="Copy token">
+                                    <svg id="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    <svg id="check-icon" class="hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-icon" onclick="App.dismissApiToken()" title="Dismiss">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                            </div>
+                            <div id="api-tokens-list">${tokenRows}</div>
                         </div>
                     </div>
                     <p id="account-error" class="hidden text-danger text-base mb-3"></p>
@@ -4528,11 +4624,63 @@ const App = {
     },
 
     switchAccountTab(tab) {
-        const tabs = ['general', 'notifications'];
+        const tabs = ['general', 'notifications', 'tokens'];
         const idx = tabs.indexOf(tab);
         $('.settings-tab').removeClass('active').eq(idx).addClass('active');
         $('.settings-tab-content').addClass('hidden');
         $(`#atab-${tab}`).removeClass('hidden');
+    },
+
+    createApiToken() {
+        const name = $('#new-token-name').val().trim();
+        if (!name) { $('#new-token-name').focus(); return; }
+        this.api('create_api_token', { name }, 'POST').done(res => {
+            $('#new-token-name').val('');
+            $('#new-token-value').val(res.token);
+            $('#new-token-form').addClass('hidden');
+            $('#new-token-display').removeClass('hidden');
+            this._refreshTokenList();
+        }).fail(xhr => {
+            alert(xhr.responseJSON?.error || 'Failed to create token');
+        });
+    },
+
+    copyApiToken() {
+        const input = document.getElementById('new-token-value');
+        input.select();
+        navigator.clipboard.writeText(input.value).then(() => {
+            $('#copy-icon').addClass('hidden');
+            $('#check-icon').removeClass('hidden');
+            setTimeout(() => { $('#check-icon').addClass('hidden'); $('#copy-icon').removeClass('hidden'); }, 2000);
+        });
+    },
+
+    dismissApiToken() {
+        $('#new-token-display').addClass('hidden');
+        $('#new-token-form').removeClass('hidden');
+    },
+
+    revokeApiToken(id, name) {
+        this.confirmAction(`Revoke token "${this.esc(name)}"? Any tool using it will lose access immediately.`, () => {
+            this.api('revoke_api_token', { id: parseInt(id) }, 'POST').done(() => {
+                this.showAccount();
+                setTimeout(() => this.switchAccountTab('tokens'), 100);
+            });
+        });
+    },
+
+    _refreshTokenList() {
+        this.api('list_api_tokens').done(tokens => {
+            const rows = tokens.map(t => `
+                <div class="api-token-row">
+                    <div><strong>${this.esc(t.name)}</strong>
+                        <span class="text-muted text-sm ml-2">Created ${t.created_at}${t.last_used_at ? ' · Last used ' + t.last_used_at : ''}</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="App.revokeApiToken(${t.id},'${this.escAttr(t.name)}')">Revoke</button>
+                </div>
+            `).join('');
+            $('#api-tokens-list').html(rows || '<p class="text-muted">No API tokens yet.</p>');
+        });
     },
 
     // TEAM (admin only)

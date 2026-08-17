@@ -1047,6 +1047,89 @@ assert_true(str_contains($html, 'ADD_ATTR'), 'DOMPurify configured to allow targ
 // Comment raw data attribute for edit roundtrip
 assert_true(str_contains($html, 'data-raw'), 'Comments store raw markdown in data-raw attribute');
 
+// ─── API TOKENS ─────────────────────────────────────────
+section('API Tokens');
+
+// Helper for bearer-token requests
+function reqBearer(string $action, string $token, array $data = [], string $method = 'GET'): array {
+    global $BASE;
+    $url = "$BASE/?action=$action";
+    $ch = curl_init();
+    if ($method === 'GET' && $data) {
+        $url .= '&' . http_build_query($data);
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER => true,
+    ]);
+    $headers = ["Authorization: Bearer $token"];
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        $headers[] = 'Content-Type: application/json';
+    }
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    $body = substr($response, $headerSize);
+    curl_close($ch);
+    return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
+}
+
+// List tokens (none yet)
+$r = req('list_api_tokens', [], 'GET', '', $cookieFile);
+assert_eq(200, $r['status'], 'list_api_tokens returns 200');
+assert_eq([], $r['body'], 'no tokens initially');
+
+// Create token without name fails
+$r = req('create_api_token', ['name' => ''], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'create token without name fails');
+
+// Create token
+$r = req('create_api_token', ['name' => 'Test Token'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create token returns 200');
+assert_true(!empty($r['body']['token']), 'raw token returned');
+assert_eq('Test Token', $r['body']['name'], 'token name matches');
+$apiToken = $r['body']['token'];
+$tokenId = $r['body']['id'];
+
+// List tokens (one now)
+$r = req('list_api_tokens', [], 'GET', '', $cookieFile);
+assert_eq(200, $r['status'], 'list tokens after creation');
+assert_eq(1, count($r['body']), 'one token in list');
+assert_eq('Test Token', $r['body'][0]['name'], 'token name in list');
+assert_true(empty($r['body'][0]['token_hash'] ?? ''), 'hash not exposed in list');
+
+// Use bearer token to access API (no CSRF, no session)
+$r = reqBearer('list_projects', $apiToken);
+assert_eq(200, $r['status'], 'bearer token grants access to list_projects');
+
+// Use bearer token for POST (no CSRF needed)
+$r = reqBearer('list_api_tokens', $apiToken);
+assert_eq(200, $r['status'], 'bearer token grants access to list_api_tokens');
+
+// Invalid bearer token
+$r = reqBearer('list_projects', 'invalid_token_here');
+assert_eq(401, $r['status'], 'invalid bearer token returns 401');
+
+// Revoke token
+$r = req('revoke_api_token', ['id' => $tokenId], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'revoke token returns 200');
+
+// Revoked token no longer works
+$r = reqBearer('list_projects', $apiToken);
+assert_eq(401, $r['status'], 'revoked token returns 401');
+
+// List tokens (empty again)
+$r = req('list_api_tokens', [], 'GET', '', $cookieFile);
+assert_eq(0, count($r['body']), 'no tokens after revoke');
+
+// Revoke non-existent token
+$r = req('revoke_api_token', ['id' => 99999], 'POST', $adminCsrf);
+assert_eq(404, $r['status'], 'revoke non-existent token returns 404');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . str_repeat('=', 40) . "\n";
 echo "Results: \033[32m$passed passed\033[0m, " . ($failed ? "\033[31m$failed failed\033[0m" : "0 failed") . "\n";

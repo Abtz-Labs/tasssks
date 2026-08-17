@@ -20,13 +20,20 @@ Or directly: `php -S localhost:8080 index.php`
 - **`index.php`** — the entire app. Routes, API handlers, DB schema/migrations, HTML template, CSS, and JS all in one file.
 - **`test.php`** — API test suite. Spins up a dedicated PHP server on port 8089 with `test.sqlite`. Uses `curl` for HTTP requests. Never touches `kanban.sqlite`.
 - **`.htaccess`** — Apache rewrite rules + sensitive file blocking.
-- API routing: `?action=<name>` query parameter. All POST endpoints require `X-CSRF-Token` header.
+- API routing: `?action=<name>` query parameter. POST endpoints require `X-CSRF-Token` header (session auth) OR `Authorization: Bearer <token>` header (API token auth — bypasses CSRF).
+- DB migrations use `PRAGMA user_version` (version-based, sequential). New migrations go at the end of `migrateDatabase()` with `if ($version < N)` guard.
+
+## API Authentication
+
+Two auth methods:
+- **Session** — cookie-based, requires `X-CSRF-Token` header on POST requests.
+- **Bearer token** — `Authorization: Bearer <token>` header. Bypasses CSRF. Tokens are created per-user from Account → API Tokens. Token hash stored in `api_tokens` table.
 
 ## Constraints
 
 - **Single-file architecture is intentional.** All code goes in `index.php`. Do not split into multiple files.
 - **No external PHP dependencies.** No Composer, no autoloaders. Implement logic directly.
-- Database migrations live in `migrateDatabase()` function (index.php:210). New schema changes go there.
+- Database migrations use `PRAGMA user_version` in `migrateDatabase()`. Add new migrations as `if ($version < N)` blocks and bump the final `PRAGMA user_version = N` statement.
 
 ## Testing
 

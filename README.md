@@ -123,6 +123,21 @@ Click the eye icon on a project or card to watch it. Watchers receive notificati
 
 Both email modes are processed by cron jobs (not inline) to avoid blocking the application. See the Help section in the Account menu for cron setup instructions.
 
+### API Tokens
+
+Generate API tokens from the Account menu (API Tokens tab). Tokens allow external tools and agents (like Claude Code, automation scripts, etc.) to access the API on your behalf without a browser session.
+
+Usage:
+
+```bash
+curl -H "Authorization: Bearer <your-token>" \
+  "https://your-instance/?action=list_projects"
+```
+
+Bearer token auth bypasses CSRF checks — no session cookie or `X-CSRF-Token` header needed. Tokens have full access as the user who created them.
+
+Tokens can be revoked at any time from the Account menu. The raw token is shown only once at creation — store it securely.
+
 ### App Settings (Admin Only)
 
 - SMTP configuration and test
