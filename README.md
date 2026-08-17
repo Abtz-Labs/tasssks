@@ -47,7 +47,7 @@ For development (requires [just](https://github.com/casey/just)):
 just start
 ```
 
-Or with a custom port:
+With a custom port:
 
 ```
 just start 3000
@@ -56,7 +56,13 @@ just start 3000
 Run in background:
 
 ```
-just start 2020 background
+just start background
+```
+
+Both options combined:
+
+```
+just start 3000 background
 ```
 
 Stop the server:

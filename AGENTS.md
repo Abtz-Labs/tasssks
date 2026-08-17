@@ -6,9 +6,10 @@ Single-file PHP kanban board. All backend logic, frontend HTML/CSS/JS lives in `
 
 ## Commands
 
-- `just start` — dev server on port 8080 (foreground)
+- `just start` — dev server on port 2020 (foreground)
 - `just start 3000` — dev server on custom port
-- `just start 8080 background` — dev server in background
+- `just start background` — dev server in background (default port)
+- `just start 3000 background` — dev server in background on custom port
 - `just stop` — stop background dev server
 - `just test` — run test suite (spins up its own server on port 8089, uses `test.sqlite`, cleans up after)
 
