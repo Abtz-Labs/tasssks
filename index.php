@@ -2489,7 +2489,37 @@ $isGuestRequest = isset($_GET['guest']);
     --input-height: 38px;
 }
 
+[data-theme="dark"] {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-hover: #334155;
+    --border: #334155;
+    --border-strong: #475569;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --text-light: #64748b;
+    --primary: #60a5fa;
+    --primary-hover: #3b82f6;
+    --primary-light: #1e3a5f;
+    --danger: #f87171;
+    --danger-hover: #ef4444;
+    --success: #34d399;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.4), 0 4px 6px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .ql-snow .ql-stroke { stroke: var(--text-muted); }
+[data-theme="dark"] .ql-snow .ql-fill { fill: var(--text-muted); }
+[data-theme="dark"] .ql-snow .ql-picker { color: var(--text-muted); }
+[data-theme="dark"] .ql-snow .ql-picker-options { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .ql-editor { color: var(--text); }
+[data-theme="dark"] img { opacity: 0.9; }
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -3334,6 +3364,14 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
     .search-wrapper:focus-within .search-count::after { content: none; }
 }
     </style>
+    <script>
+    (function(){
+        var t = localStorage.getItem('theme');
+        if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    })();
+    </script>
 </head>
 <body>
 
@@ -3577,6 +3615,7 @@ const App = {
     _quillComment: null,
 
     init() {
+        this._updateThemeIcon();
         const params = new URLSearchParams(window.location.search);
         this.guestToken = params.get('guest');
 
@@ -3624,6 +3663,28 @@ const App = {
                 }
             });
         }
+    },
+
+    toggleTheme() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        if (isDark) {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('theme', 'light');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            localStorage.setItem('theme', 'dark');
+        }
+        this._updateThemeIcon();
+    },
+
+    _updateThemeIcon() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const sun = document.getElementById('theme-icon-sun');
+        const moon = document.getElementById('theme-icon-moon');
+        const label = document.getElementById('theme-label');
+        if (moon) moon.style.display = isDark ? 'none' : 'inline';
+        if (sun) sun.style.display = isDark ? 'inline' : 'none';
+        if (label) label.textContent = isDark ? 'Light mode' : 'Dark mode';
     },
 
     handleRoute() {
@@ -3841,6 +3902,11 @@ const App = {
                         Settings
                     </button>` : ''}
                     <div class="dropdown-divider"></div>
+                    <button class="dropdown-item" onclick="App.toggleTheme();$('.dropdown-menu').removeClass('open')">
+                        <svg id="theme-icon-moon" viewBox="0 0 24 24" stroke-width="2" style="${document.documentElement.getAttribute('data-theme')==='dark'?'display:none':''}"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                        <svg id="theme-icon-sun" viewBox="0 0 24 24" stroke-width="2" style="${document.documentElement.getAttribute('data-theme')==='dark'?'':'display:none'}"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                        <span id="theme-label">${document.documentElement.getAttribute('data-theme')==='dark'?'Light mode':'Dark mode'}</span>
+                    </button>
                     <button class="dropdown-item" onclick="App.showHelp();$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M3 11h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H3a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z"/><path d="M21 11h-1a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1z"/><path d="M4 11V8a8 8 0 0 1 16 0v3"/><path d="M18 18a4 4 0 0 1-4 4h-2"/></svg>
                         Help
@@ -4705,8 +4771,9 @@ const App = {
     },
 
     // PROJECT SETTINGS (owner/admin only)
-    showSettings() {
+    showSettings(tab) {
         if (!this.currentProject) return;
+        tab = tab || this._settingsTab || 'general';
         const pid = this.currentProject.id;
         $.when(
             this.api('list_guests', { project_id: pid }),
@@ -4805,11 +4872,12 @@ const App = {
                     </div>
                 </div>
             `, '');
-            setTimeout(() => $('#project-name').focus(), 50);
+            this.switchProjectSettingsTab(tab);
         });
     },
 
     switchProjectSettingsTab(tab) {
+        this._settingsTab = tab;
         const tabs = ['general', 'webhooks', 'guests'];
         const idx = tabs.indexOf(tab);
         $('.settings-tab').removeClass('active').eq(idx).addClass('active');
@@ -4839,7 +4907,7 @@ const App = {
         const name = $('#new-guest-name').val().trim();
         const email = $('#new-guest-email').val().trim();
         if (!name) return;
-        this.api('create_guest', { project_id: this.currentProject.id, name, can_comment: 1, email }, 'POST').done(() => this.showSettings());
+        this.api('create_guest', { project_id: this.currentProject.id, name, can_comment: 1, email }, 'POST').done(() => this.showSettings('guests'));
     },
 
     editGuest(id, name, email) {
@@ -4850,28 +4918,28 @@ const App = {
             <div class="form-group"><label>Email (optional)</label>
                 <input type="email" id="edit-guest-email" value="${this.esc(email)}" placeholder="guest@example.com">
             </div>
-        `, `<button class="btn btn-ghost" onclick="App.showSettings()">Cancel</button> <button class="btn btn-primary" onclick="App.saveGuest(${id})">Save</button>`);
+        `, `<button class="btn btn-ghost" onclick="App.showSettings('guests')">Cancel</button> <button class="btn btn-primary" onclick="App.saveGuest(${id})">Save</button>`);
     },
     saveGuest(id) {
         const name = $('#edit-guest-name').val().trim();
         const email = $('#edit-guest-email').val().trim();
         if (!name) return;
-        this.api('update_guest', { id, name, email }, 'POST').done(() => this.showSettings());
+        this.api('update_guest', { id, name, email }, 'POST').done(() => this.showSettings('guests'));
     },
-    deleteGuest(id) { this.api('delete_guest', { id }, 'POST').done(() => this.showSettings()); },
+    deleteGuest(id) { this.api('delete_guest', { id }, 'POST').done(() => this.showSettings('guests')); },
 
     createWebhook() {
         const url = $('#webhook-url').val().trim();
         const type = $('#webhook-type').val();
         if (!url) return;
-        this.api('create_webhook', { project_id: this.currentProject.id, url, type }, 'POST').done(() => this.showSettings());
+        this.api('create_webhook', { project_id: this.currentProject.id, url, type }, 'POST').done(() => this.showSettings('webhooks'));
     },
-    deleteWebhook(id) { this.api('delete_webhook', { id }, 'POST').done(() => this.showSettings()); },
-    toggleWebhook(id) { this.api('toggle_webhook', { id }, 'POST').done(() => this.showSettings()); },
+    deleteWebhook(id) { this.api('delete_webhook', { id }, 'POST').done(() => this.showSettings('webhooks')); },
+    toggleWebhook(id) { this.api('toggle_webhook', { id }, 'POST').done(() => this.showSettings('webhooks')); },
 
     showWebhookPayloads() {
         this.openModal('Webhook Payload Format', `
-            <div class="mb-3"><button class="btn btn-ghost btn-sm" onclick="App.showSettings()">&larr; Back to Settings</button></div>
+            <div class="mb-3"><button class="btn btn-ghost btn-sm" onclick="App.showSettings('webhooks')">&larr; Back to Settings</button></div>
             <div class="card-detail-section">
                 <h4>Generic</h4>
                 <p class="text-sm text-light mb-2">POST with <code>Content-Type: application/json</code></p>
@@ -5094,6 +5162,7 @@ const App = {
         $('#modal-overlay').removeClass('active');
         this._quill = null;
         this._quillComment = null;
+        this._settingsTab = null;
         if (this._openCardId && this.currentProject) {
             this._navigating = true;
             history.replaceState(null, '', `#project/${this.currentProject.id}`);
