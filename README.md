@@ -152,10 +152,10 @@ Tokens can be revoked at any time from the Account menu. The raw token is shown 
 | `⌘S` | Save (in any form) |
 | `N` | Add card to first column |
 | `W` | Watch/unwatch card or project |
-| `,` | Project settings |
+| `⌘,` | Project settings |
 | `A` | Account |
 | `T` | Team |
-| `G` | App settings |
+| `⌘G` | App settings |
 | `?` | Help |
 | `1`–`9` | Open project by index (on project list) |
 | `Esc` | Cancel / close modal / clear search |

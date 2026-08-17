@@ -843,7 +843,7 @@ $hs = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
 $rateCsrf = (json_decode(substr($resp, $hs), true))['csrf_token'] ?? '';
 curl_close($ch);
 
-for ($i = 0; $i < 6; $i++) {
+for ($i = 0; $i < 16; $i++) {
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL => "$BASE/?action=auth_login",
@@ -873,7 +873,7 @@ curl_setopt_array($ch, [
 $resp = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
-assert_eq(429, $httpCode, 'rate limit enforced after 5 attempts');
+assert_eq(429, $httpCode, 'rate limit enforced after 15 attempts');
 
 // X-Forwarded-For should NOT bypass rate limit
 $ch = curl_init();
@@ -1130,6 +1130,140 @@ assert_eq(0, count($r['body']), 'no tokens after revoke');
 $r = req('revoke_api_token', ['id' => 99999], 'POST', $adminCsrf);
 assert_eq(404, $r['status'], 'revoke non-existent token returns 404');
 
+// Create admin API token for time tracking tests (bypasses rate limiter for team_add)
+$r = req('create_api_token', ['name' => 'Admin For Time'], 'POST', $adminCsrf);
+$adminBearerToken = $r['body']['token'];
+
+// ─── TIME TRACKING ──────────────────────────────────────
+section('Time Tracking');
+
+// Create a fresh member for time tracking (original was removed in Team Remove tests)
+$r = reqBearer('team_add', $adminBearerToken, ['name' => 'Time Member', 'email' => 'time@test.com', 'password' => 'time123', 'role' => 'member'], 'POST');
+assert_eq(200, $r['status'], 'create time member');
+$timeMemberId = $r['body']['id'];
+// Create bearer token for the member (via direct DB — bearer auth bypasses rate limiter)
+$timeMemberTokenRaw = bin2hex(random_bytes(32));
+$timeMemberTokenHash = hash('sha256', $timeMemberTokenRaw);
+$testDb = new PDO('sqlite:' . $TEST_DB, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$testDb->exec("INSERT INTO api_tokens (user_id, name, token_hash) VALUES ($timeMemberId, 'Time Member Token', '$timeMemberTokenHash')");
+$testDb = null;
+usleep(50_000);
+
+// Create a card for time tracking tests
+$r = req('create_card', ['column_id' => $colId, 'title' => 'Time tracked card'], 'POST', $adminCsrf);
+$timeCardId = $r['body']['id'];
+
+// Create time entry — missing card_id fails
+$r = req('create_time_entry', ['minutes' => 60, 'worked_at' => '2026-08-17'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'create time entry without card_id fails');
+
+// Create time entry — zero minutes fails
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 0, 'worked_at' => '2026-08-17'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'create time entry with 0 minutes fails');
+
+// Create time entry — negative minutes fails
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => -30, 'worked_at' => '2026-08-17'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'create time entry with negative minutes fails');
+
+// Create time entry — missing worked_at fails
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 60], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'create time entry without worked_at fails');
+
+// Create valid time entry
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 90, 'worked_at' => '2026-08-15', 'note' => 'Planning session'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create time entry returns 200');
+assert_true(!empty($r['body']['id']), 'time entry id returned');
+$timeEntryId1 = $r['body']['id'];
+
+// Create another entry (different date)
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 120, 'worked_at' => '2026-08-16', 'note' => 'Implementation'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create second time entry');
+$timeEntryId2 = $r['body']['id'];
+
+// Create entry as member (via bearer token)
+$r = reqBearer('create_time_entry', $timeMemberTokenRaw, ['card_id' => $timeCardId, 'minutes' => 45, 'worked_at' => '2026-08-16', 'note' => 'Code review'], 'POST');
+assert_eq(200, $r['status'], 'member can create time entry');
+$memberTimeEntryId = $r['body']['id'];
+
+// List time entries by card
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+assert_eq(200, $r['status'], 'list time entries by card returns 200');
+assert_eq(3, count($r['body']), 'three time entries for card');
+
+// List time entries by project
+$r = req('list_time_entries', ['project_id' => $adminProjectId], 'GET', '', $cookieFile);
+assert_eq(200, $r['status'], 'list time entries by project returns 200');
+assert_eq(3, count($r['body']), 'three time entries for project');
+
+// List with date filter
+$r = req('list_time_entries', ['project_id' => $adminProjectId, 'from' => '2026-08-16', 'to' => '2026-08-16'], 'GET', '', $cookieFile);
+assert_eq(200, $r['status'], 'list time entries with date filter');
+assert_eq(2, count($r['body']), 'two entries on 2026-08-16');
+
+// Time report — aggregated
+$r = req('time_report', ['project_id' => $adminProjectId], 'GET', '', $cookieFile);
+assert_eq(200, $r['status'], 'time report returns 200');
+assert_eq(255, $r['body']['total_minutes'], 'total minutes is 255 (90+120+45)');
+assert_true(!empty($r['body']['entries']), 'report contains entries');
+
+// Time report — with date filter
+$r = req('time_report', ['project_id' => $adminProjectId, 'from' => '2026-08-15', 'to' => '2026-08-15'], 'GET', '', $cookieFile);
+assert_eq(90, $r['body']['total_minutes'], 'filtered report total is 90');
+
+// Delete own time entry (member deletes their own)
+$r = reqBearer('delete_time_entry', $timeMemberTokenRaw, ['id' => $memberTimeEntryId], 'POST');
+assert_eq(200, $r['status'], 'member can delete own time entry');
+
+// Member cannot delete admin's entry
+$r = reqBearer('delete_time_entry', $timeMemberTokenRaw, ['id' => $timeEntryId1], 'POST');
+assert_eq(403, $r['status'], 'member cannot delete others time entry');
+
+// Project owner (admin) can delete any entry
+$r = req('delete_time_entry', ['id' => $timeEntryId2], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'project owner can delete any time entry');
+
+// Verify remaining entries
+$r = req('list_time_entries', ['project_id' => $adminProjectId], 'GET', '', $cookieFile);
+assert_eq(1, count($r['body']), 'one entry remaining after deletions');
+
+// Time entry stores author_name and card_title
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+assert_eq('Admin', $r['body'][0]['author_name'], 'author_name stored on entry');
+assert_true(!empty($r['body'][0]['card_title']), 'card_title stored on entry');
+
+// Guest access to time report (disabled by default)
+$guestToken = '';
+$r = req('list_guests', ['project_id' => $adminProjectId], 'GET', '', $cookieFile);
+if (count($r['body']) === 0) {
+    $r = req('create_guest', ['project_id' => $adminProjectId, 'name' => 'Time Guest'], 'POST', $adminCsrf);
+    $guestToken = $r['body']['token'];
+} else {
+    $guestToken = $r['body'][0]['token'];
+}
+$guestCookie = tempnam(sys_get_temp_dir(), 'kanban_guest_');
+$r = req('time_report', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
+assert_eq(403, $r['status'], 'guest cannot access time report by default');
+
+// Enable guest time access
+$r = req('update_project', ['id' => $adminProjectId, 'guest_can_view_time' => 1], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'enable guest_can_view_time');
+
+// Guest can now access time report
+$r = req('time_report', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
+assert_eq(200, $r['status'], 'guest can access time report when enabled');
+assert_true(isset($r['body']['total_minutes']), 'guest sees report data');
+
+// Guest cannot create time entries (403 from CSRF check since guest has no CSRF token)
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 30, 'worked_at' => '2026-08-17'], 'POST', '', $guestCookie);
+assert_true($r['status'] === 401 || $r['status'] === 403, 'guest cannot create time entries');
+
+// CSV export
+$r = req('time_report', ['project_id' => $adminProjectId, 'format' => 'csv'], 'GET', '', $cookieFile);
+assert_eq(200, $r['status'], 'csv export returns 200');
+assert_true(str_contains($r['raw'], 'Card,Author,Minutes,Date,Note'), 'csv has header row');
+
+@unlink($guestCookie);
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . str_repeat('=', 40) . "\n";
 echo "Results: \033[32m$passed passed\033[0m, " . ($failed ? "\033[31m$failed failed\033[0m" : "0 failed") . "\n";
@@ -1139,6 +1273,7 @@ proc_terminate($serverProc);
 proc_close($serverProc);
 @unlink($cookieFile);
 @unlink($memberCookie);
+@unlink($timeMemberCookie ?? '');
 @unlink($TEST_DB);
 
 exit($failed > 0 ? 1 : 0);

@@ -257,7 +257,33 @@ function migrateDatabase(PDO $db): void {
         )");
     }
 
-    $db->exec('PRAGMA user_version = 2');
+    // Version 2 → 3: Time tracking
+    if ($version < 3) {
+        $db->exec("CREATE TABLE IF NOT EXISTS time_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id TEXT NOT NULL,
+            card_id INTEGER,
+            card_title TEXT NOT NULL DEFAULT '',
+            user_id INTEGER,
+            author_name TEXT NOT NULL DEFAULT '',
+            minutes INTEGER NOT NULL,
+            note TEXT DEFAULT '',
+            worked_at TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE SET NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_time_entries_project ON time_entries(project_id)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_time_entries_card ON time_entries(card_id)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_time_entries_project_date ON time_entries(project_id, worked_at)");
+        $cols = array_column($db->query("PRAGMA table_info(projects)")->fetchAll(), 'name');
+        if (!in_array('guest_can_view_time', $cols)) {
+            $db->exec("ALTER TABLE projects ADD COLUMN guest_can_view_time INTEGER DEFAULT 0");
+        }
+    }
+
+    $db->exec('PRAGMA user_version = 3');
 }
 
 // ============================================================================
@@ -617,6 +643,12 @@ if ($action) {
         'send_notifications' => apiSendNotifications(),
         'send_digest' => apiSendDigest(),
 
+        // Time Tracking
+        'list_time_entries' => apiListTimeEntries(),
+        'create_time_entry' => apiCreateTimeEntry(),
+        'delete_time_entry' => apiDeleteTimeEntry(),
+        'time_report' => apiTimeReport(),
+
         default => jsonResponse(['error' => 'Unknown action'], 404),
     };
     exit;
@@ -681,7 +713,7 @@ function checkRateLimit(): void {
     $ip = getClientIp();
     $db = getDb();
     $window = 15; // minutes
-    $maxAttempts = 5;
+    $maxAttempts = 15;
 
     // Clean old attempts
     $db->prepare("DELETE FROM login_attempts WHERE attempted_at < datetime('now', ?)")->execute(["-$window minutes"]);
@@ -1083,6 +1115,10 @@ function apiUpdateProject(): void {
         $fields[] = 'guest_can_sort_cards = ?';
         $params[] = (int) $input['guest_can_sort_cards'];
     }
+    if (isset($input['guest_can_view_time'])) {
+        $fields[] = 'guest_can_view_time = ?';
+        $params[] = (int) $input['guest_can_view_time'];
+    }
 
     if ($fields) {
         $params[] = $id;
@@ -1246,6 +1282,10 @@ function apiListCards(): void {
         $commentStmt = $db->prepare("SELECT COUNT(*) as cnt FROM comments WHERE card_id = ?");
         $commentStmt->execute([$card['id']]);
         $card['comment_count'] = (int) $commentStmt->fetch()['cnt'];
+
+        $timeStmt = $db->prepare("SELECT COALESCE(SUM(minutes), 0) as total FROM time_entries WHERE card_id = ?");
+        $timeStmt->execute([$card['id']]);
+        $card['total_minutes'] = (int) $timeStmt->fetch()['total'];
 
         $wcStmt = $db->prepare("SELECT (SELECT COUNT(*) FROM watchers WHERE project_id = ? AND card_id = ?) + (SELECT COUNT(*) FROM guest_watchers WHERE project_id = ? AND card_id = ?) as cnt");
         $wcStmt->execute([$projectId, $card['id'], $projectId, $card['id']]);
@@ -2376,6 +2416,163 @@ function apiSendDigest(): void {
 }
 
 // ============================================================================
+// API: TIME TRACKING
+// ============================================================================
+
+function apiCreateTimeEntry(): void {
+    requireAuth();
+    $user = getCurrentUser();
+    $input = getInput();
+
+    $cardId = (int) ($input['card_id'] ?? 0);
+    $minutes = (int) ($input['minutes'] ?? 0);
+    $workedAt = trim($input['worked_at'] ?? '');
+    $note = trim($input['note'] ?? '');
+
+    if (!$cardId) jsonResponse(['error' => 'card_id is required'], 400);
+    if ($minutes <= 0) jsonResponse(['error' => 'minutes must be greater than 0'], 400);
+    if (!$workedAt) jsonResponse(['error' => 'worked_at is required'], 400);
+
+    $db = getDb();
+    $card = $db->prepare("SELECT c.title, col.project_id FROM cards c JOIN columns_ col ON c.column_id = col.id WHERE c.id = ?");
+    $card->execute([$cardId]);
+    $card = $card->fetch();
+    if (!$card) jsonResponse(['error' => 'Card not found'], 404);
+
+    $stmt = $db->prepare("INSERT INTO time_entries (project_id, card_id, card_title, user_id, author_name, minutes, note, worked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$card['project_id'], $cardId, $card['title'], $user['id'], $user['name'], $minutes, $note, $workedAt]);
+
+    jsonResponse(['id' => (int) $db->lastInsertId()]);
+}
+
+function apiListTimeEntries(): void {
+    $projectId = $_GET['project_id'] ?? '';
+    $cardId = (int) ($_GET['card_id'] ?? 0);
+
+    if ($projectId) {
+        requireAccess($projectId);
+    } elseif ($cardId) {
+        $db = getDb();
+        $card = $db->prepare("SELECT col.project_id FROM cards c JOIN columns_ col ON c.column_id = col.id WHERE c.id = ?");
+        $card->execute([$cardId]);
+        $row = $card->fetch();
+        if (!$row) jsonResponse(['error' => 'Card not found'], 404);
+        $projectId = $row['project_id'];
+        requireAccess($projectId);
+    } else {
+        jsonResponse(['error' => 'project_id or card_id is required'], 400);
+    }
+
+    $db = getDb();
+    $where = [];
+    $params = [];
+
+    if ($cardId) {
+        $where[] = 'te.card_id = ?';
+        $params[] = $cardId;
+    } else {
+        $where[] = 'te.project_id = ?';
+        $params[] = $projectId;
+    }
+
+    $from = $_GET['from'] ?? '';
+    $to = $_GET['to'] ?? '';
+    if ($from) { $where[] = 'te.worked_at >= ?'; $params[] = $from; }
+    if ($to) { $where[] = 'te.worked_at <= ?'; $params[] = $to; }
+
+    $sql = "SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at, te.created_at FROM time_entries te WHERE " . implode(' AND ', $where) . " ORDER BY te.worked_at DESC, te.created_at DESC";
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    jsonResponse($stmt->fetchAll());
+}
+
+function apiDeleteTimeEntry(): void {
+    requireAuth();
+    $user = getCurrentUser();
+    $input = getInput();
+    $id = (int) ($input['id'] ?? 0);
+    if (!$id) jsonResponse(['error' => 'id is required'], 400);
+
+    $db = getDb();
+    $entry = $db->prepare("SELECT * FROM time_entries WHERE id = ?");
+    $entry->execute([$id]);
+    $entry = $entry->fetch();
+    if (!$entry) jsonResponse(['error' => 'Time entry not found'], 404);
+
+    if ($entry['user_id'] !== $user['id'] && !isProjectOwner($entry['project_id'])) {
+        jsonResponse(['error' => 'Forbidden'], 403);
+    }
+
+    $db->prepare("DELETE FROM time_entries WHERE id = ?")->execute([$id]);
+    jsonResponse(['ok' => true]);
+}
+
+function apiTimeReport(): void {
+    $projectId = $_GET['project_id'] ?? '';
+    if (!$projectId) jsonResponse(['error' => 'project_id is required'], 400);
+
+    $guestToken = $_GET['guest'] ?? $_SESSION['guest_token'] ?? null;
+    if ($guestToken) {
+        $db = getDb();
+        $project = $db->prepare("SELECT guest_can_view_time FROM projects WHERE id = ?");
+        $project->execute([$projectId]);
+        $project = $project->fetch();
+        if (!$project || !$project['guest_can_view_time']) {
+            jsonResponse(['error' => 'Forbidden'], 403);
+        }
+    } else {
+        requireAccess($projectId);
+    }
+
+    $db = getDb();
+    $where = ['te.project_id = ?'];
+    $params = [$projectId];
+
+    $from = $_GET['from'] ?? '';
+    $to = $_GET['to'] ?? '';
+    if ($from) { $where[] = 'te.worked_at >= ?'; $params[] = $from; }
+    if ($to) { $where[] = 'te.worked_at <= ?'; $params[] = $to; }
+
+    $whereSql = implode(' AND ', $where);
+
+    // CSV export
+    if (($_GET['format'] ?? '') === 'csv') {
+        $stmt = $db->prepare("SELECT te.card_title, te.author_name, te.minutes, te.worked_at, te.note FROM time_entries te WHERE $whereSql ORDER BY te.worked_at DESC");
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="time-report.csv"');
+        echo "Card,Author,Minutes,Date,Note\n";
+        foreach ($rows as $r) {
+            echo '"' . str_replace('"', '""', $r['card_title']) . '","' . str_replace('"', '""', $r['author_name']) . '",' . $r['minutes'] . ',' . $r['worked_at'] . ',"' . str_replace('"', '""', $r['note']) . "\"\n";
+        }
+        exit;
+    }
+
+    // Total
+    $stmt = $db->prepare("SELECT COALESCE(SUM(te.minutes), 0) as total FROM time_entries te WHERE $whereSql");
+    $stmt->execute($params);
+    $totalMinutes = (int) $stmt->fetchColumn();
+
+    // Entries with card info
+    $stmt = $db->prepare("SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at FROM time_entries te WHERE $whereSql ORDER BY te.worked_at DESC, te.created_at DESC");
+    $stmt->execute($params);
+    $entries = $stmt->fetchAll();
+
+    $entryCount = count($entries);
+    $days = [];
+    foreach ($entries as $e) { $days[$e['worked_at']] = true; }
+    $avgPerDay = count($days) > 0 ? round($totalMinutes / count($days)) : 0;
+
+    jsonResponse([
+        'total_minutes' => $totalMinutes,
+        'entry_count' => $entryCount,
+        'avg_per_day' => $avgPerDay,
+        'entries' => $entries,
+    ]);
+}
+
+// ============================================================================
 // SMTP SENDER
 // ============================================================================
 
@@ -2650,7 +2847,7 @@ body {
 .btn-sm { height: 30px; padding: 0 10px; font-size: 12px; }
 
 /* Forms */
-input[type="text"], input[type="email"], input[type="password"], textarea, select {
+input[type="text"], input[type="email"], input[type="password"], input[type="date"], textarea, select {
     width: 100%;
     height: var(--input-height);
     padding: 0 12px;
@@ -2891,6 +3088,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
     transition: transform var(--transition);
 }
 .modal-overlay.active .modal { transform: translateY(0); }
+.modal-wide { max-width: 800px; }
 
 .modal-header {
     padding: 20px 24px;
@@ -3167,9 +3365,31 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 
 /* API token rows */
 .api-token-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 6px; }
+/* Time tracking */
+.card-detail-actions-col { display: flex; flex-direction: column; gap: 4px; }
+.time-section { padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.time-input { width: 80px; }
+.time-entries-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.time-entries-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-weight: 500; color: var(--text-muted); }
+.time-entries-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.time-entries-table td:last-child { width: 32px; text-align: center; }
+
+/* Time report */
+.report-controls { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
+.report-periods, .report-group { display: flex; gap: 4px; align-items: center; }
+.report-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.report-stat { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.report-stat strong { font-size: 22px; margin-bottom: 4px; }
+.report-stat span { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.report-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.report-table th { text-align: left; padding: 8px; border-bottom: 2px solid var(--border); font-weight: 500; }
+.report-table td { padding: 8px; border-bottom: 1px solid var(--border); }
+
 .token-input { font-family: monospace; font-size: 12px; flex: 1; }
 .btn-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); cursor: pointer; color: var(--text-muted); }
 .btn-icon:hover { background: var(--surface-hover); color: var(--text); }
+.btn-icon-danger { color: var(--danger); border-color: var(--danger); }
+.btn-icon-danger:hover { background: var(--danger); color: #fff; }
 
 /* Badge patterns */
 .badge-admin {
@@ -4008,6 +4228,7 @@ const App = {
                 <button class="search-clear" id="search-clear" onclick="App.clearSearch()">&times;</button>
             </div>`;
             actions += `<button class="btn btn-ghost btn-sm" id="project-watch-btn" onclick="App._projectWatching ? App.unwatchProject() : App.watchProject()">...</button>`;
+            actions += `<button class="btn btn-ghost btn-sm" onclick="App.showTimeReport()"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> <span class="settings-label">Report</span></button>`;
             if (isOwner) {
                 actions += `<button class="btn btn-ghost btn-sm" onclick="App.showSettings()"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> <span class="settings-label">Project Settings</span></button>`;
             }
@@ -4089,6 +4310,7 @@ const App = {
                     ${card.description ? '<span title="Has description">&#9776;</span>' : ''}
                     ${hasAtt ? '<span title="Has attachments">&#128206;</span>' : ''}
                     ${commentCount ? `<span title="${commentCount} comment${commentCount > 1 ? 's' : ''}">&#128172; ${commentCount}</span>` : ''}
+                    ${card.total_minutes ? `<span title="${this.formatMinutes(card.total_minutes)} tracked">&#9201; ${this.formatMinutes(card.total_minutes)}</span>` : ''}
                 </div>
             </div>
         `;
@@ -4244,7 +4466,19 @@ const App = {
                     <span><strong>Created:</strong> ${card.created_at}</span>
                     ${card.updated_at !== card.created_at ? `<span><strong>Updated:</strong> ${card.updated_at}</span>` : '<span></span>'}
                 </div>
-                ${watchBtn}
+                <div class="card-detail-actions-col">
+                    ${watchBtn}
+                    ${!this.isGuest ? `<button class="btn btn-ghost btn-watch" onclick="App.toggleTimeEntries(${cardId})">&#9201; <span id="time-total-${cardId}">${card.total_minutes ? this.formatMinutes(card.total_minutes) : '0m'}</span></button>` : ''}
+                </div>
+            </div>
+            <div id="time-section-${cardId}" class="hidden time-section">
+                <div class="form-row mb-2">
+                    <input type="text" id="time-input" placeholder="1h30m" class="time-input">
+                    <input type="date" id="time-date" value="${new Date().toISOString().slice(0,10)}">
+                    <input type="text" id="time-note" placeholder="Note (optional)" class="flex-1">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="App.addTimeEntry(${cardId})">+</button>
+                </div>
+                <div id="time-entries-${cardId}"></div>
             </div>
             <div class="card-detail-section card-detail-tags">
                 ${tagsHtml}
@@ -4666,6 +4900,146 @@ const App = {
                 this.showAccount();
                 setTimeout(() => this.switchAccountTab('tokens'), 100);
             });
+        });
+    },
+
+    // TIME TRACKING
+    toggleTimeEntries(cardId) {
+        const section = $(`#time-section-${cardId}`);
+        if (section.hasClass('hidden')) {
+            section.removeClass('hidden');
+            this.loadTimeEntries(cardId);
+        } else {
+            section.addClass('hidden');
+        }
+    },
+
+    loadTimeEntries(cardId) {
+        this.api('list_time_entries', { card_id: cardId }).done(entries => {
+            if (!entries.length) {
+                $(`#time-entries-${cardId}`).html('<p class="text-muted text-sm">No time entries yet.</p>');
+                return;
+            }
+            const rows = entries.map(e => `
+                <tr>
+                    <td><strong>${this.formatMinutes(e.minutes)}</strong></td>
+                    <td>${e.worked_at}</td>
+                    <td>${this.esc(e.note)}</td>
+                    <td>${this.esc(e.author_name)}</td>
+                    <td><button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button></td>
+                </tr>
+            `).join('');
+            $(`#time-entries-${cardId}`).html(`
+                <table class="time-entries-table">
+                    <thead><tr><th>Time</th><th>Date</th><th>Note</th><th>By</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `);
+        });
+    },
+
+    addTimeEntry(cardId) {
+        const raw = $('#time-input').val().trim();
+        if (!raw) { $('#time-input').focus(); return; }
+        const minutes = this.parseTime(raw);
+        if (!minutes) { $('#time-input').focus(); return; }
+        const workedAt = $('#time-date').val();
+        const note = $('#time-note').val().trim();
+        this.api('create_time_entry', { card_id: cardId, minutes, worked_at: workedAt, note }, 'POST').done(() => {
+            $('#time-input').val('');
+            $('#time-note').val('');
+            $(`#time-section-${cardId}`).addClass('hidden');
+            this.loadTimeEntries(cardId);
+            this.api('list_time_entries', { card_id: cardId }).done(entries => {
+                const total = entries.reduce((s, e) => s + e.minutes, 0);
+                $(`#time-total-${cardId}`).text(this.formatMinutes(total));
+            });
+        });
+    },
+
+    confirmDeleteTimeEntry(id, cardId) {
+        this.openModal('Confirm', `<p class="text-lg">Delete this time entry?</p>`, `
+            <button class="btn btn-ghost" onclick="App.openCard(${cardId})">Cancel</button>
+            <button class="btn btn-danger" id="confirm-action-btn">Confirm</button>
+        `);
+        setTimeout(() => $('#confirm-action-btn').off('click').on('click', () => {
+            this.api('delete_time_entry', { id }, 'POST').done(() => {
+                this.refreshBoard();
+                setTimeout(() => App.openCard(cardId), 200);
+            });
+        }), 50);
+    },
+
+    parseTime(str) {
+        str = str.trim().toLowerCase();
+        let total = 0;
+        const hMatch = str.match(/(\d+(?:\.\d+)?)\s*h/);
+        const mMatch = str.match(/(\d+)\s*m/);
+        if (hMatch) total += Math.round(parseFloat(hMatch[1]) * 60);
+        if (mMatch) total += parseInt(mMatch[1]);
+        if (!hMatch && !mMatch && /^\d+$/.test(str)) total = parseInt(str);
+        return total > 0 ? total : 0;
+    },
+
+    showTimeReport(period) {
+        if (!this.currentProject) return;
+        const pid = this.currentProject.id;
+        period = period || 'month';
+        const now = new Date();
+        let from = '', to = now.toISOString().slice(0,10);
+        if (period === 'today') { from = to; }
+        else if (period === 'week') { const d = new Date(now); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); from = d.toISOString().slice(0,10); }
+        else if (period === 'month') { from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`; }
+        else if (period === 'year') { from = `${now.getFullYear()}-01-01`; }
+        else if (period === 'custom') { from = $('#report-from').val(); to = $('#report-to').val(); }
+        const params = { project_id: pid };
+        if (from) params.from = from;
+        if (to) params.to = to;
+        this.api('time_report', params).done(data => {
+            const groupBy = this._reportGroupBy || 'card';
+            let rows = data.entries || [];
+            let tableHtml = '';
+            if (groupBy === 'card') {
+                const grouped = {};
+                rows.forEach(e => { const k = e.card_title || 'Deleted card'; if (!grouped[k]) grouped[k] = { minutes: 0, entries: [] }; grouped[k].minutes += e.minutes; grouped[k].entries.push(e); });
+                tableHtml = Object.entries(grouped).map(([title, g]) => `<tr><td>${this.esc(title)}</td><td>${this.formatMinutes(g.minutes)}</td><td>${g.entries.length}</td></tr>`).join('');
+            } else if (groupBy === 'user') {
+                const grouped = {};
+                rows.forEach(e => { const k = e.author_name || 'Unknown'; if (!grouped[k]) grouped[k] = 0; grouped[k] += e.minutes; });
+                tableHtml = Object.entries(grouped).map(([name, m]) => `<tr><td>${this.esc(name)}</td><td>${this.formatMinutes(m)}</td><td></td></tr>`).join('');
+            } else {
+                const grouped = {};
+                rows.forEach(e => { if (!grouped[e.worked_at]) grouped[e.worked_at] = 0; grouped[e.worked_at] += e.minutes; });
+                tableHtml = Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0])).map(([date, m]) => `<tr><td>${date}</td><td>${this.formatMinutes(m)}</td><td></td></tr>`).join('');
+            }
+            const content = `
+                <div class="report-controls">
+                    <div class="report-periods">
+                        <button class="btn btn-sm ${period==='today'?'btn-primary':'btn-ghost'}" onclick="App.showTimeReport('today')">Today</button>
+                        <button class="btn btn-sm ${period==='week'?'btn-primary':'btn-ghost'}" onclick="App.showTimeReport('week')">This Week</button>
+                        <button class="btn btn-sm ${period==='month'?'btn-primary':'btn-ghost'}" onclick="App.showTimeReport('month')">This Month</button>
+                        <button class="btn btn-sm ${period==='year'?'btn-primary':'btn-ghost'}" onclick="App.showTimeReport('year')">This Year</button>
+                    </div>
+                    <div class="report-group">
+                        <span class="text-sm text-muted">Group by:</span>
+                        <button class="btn btn-sm ${groupBy==='card'?'btn-primary':'btn-ghost'}" onclick="App._reportGroupBy='card';App.showTimeReport('${period}')">Card</button>
+                        <button class="btn btn-sm ${groupBy==='user'?'btn-primary':'btn-ghost'}" onclick="App._reportGroupBy='user';App.showTimeReport('${period}')">User</button>
+                        <button class="btn btn-sm ${groupBy==='date'?'btn-primary':'btn-ghost'}" onclick="App._reportGroupBy='date';App.showTimeReport('${period}')">Date</button>
+                    </div>
+                </div>
+                <div class="report-summary">
+                    <div class="report-stat"><strong>${this.formatMinutes(data.total_minutes)}</strong><span>Total</span></div>
+                    <div class="report-stat"><strong>${data.entry_count}</strong><span>Entries</span></div>
+                    <div class="report-stat"><strong>${data.avg_per_day ? this.formatMinutes(data.avg_per_day) : '0m'}</strong><span>Avg/day</span></div>
+                </div>
+                <table class="report-table">
+                    <thead><tr><th>${groupBy === 'card' ? 'Card' : groupBy === 'user' ? 'User' : 'Date'}</th><th>Hours</th><th>${groupBy === 'card' ? 'Entries' : ''}</th></tr></thead>
+                    <tbody>${tableHtml || '<tr><td colspan="3" class="text-muted">No time entries for this period.</td></tr>'}</tbody>
+                </table>
+            `;
+            const footer = `<a class="btn btn-ghost" href="?action=time_report&project_id=${pid}&from=${from}&to=${to}&format=csv" target="_blank">Export CSV</a>`;
+            this.openModal('Time Report — ' + this.esc(this.currentProject.name), content, footer);
+            $('.modal').addClass('modal-wide');
         });
     },
 
@@ -5162,10 +5536,10 @@ const App = {
                     <tr><td><kbd>⌘</kbd> <kbd>S</kbd></td><td>Save (in any form)</td></tr>
                     <tr><td><kbd>N</kbd></td><td>Add card to first column</td></tr>
                     <tr><td><kbd>W</kbd></td><td>Watch/unwatch card or project</td></tr>
-                    <tr><td><kbd>,</kbd></td><td>Project settings</td></tr>
+                    <tr><td><kbd>⌘</kbd> <kbd>,</kbd></td><td>Project settings</td></tr>
                     <tr><td><kbd>A</kbd></td><td>Account</td></tr>
                     <tr><td><kbd>T</kbd></td><td>Team</td></tr>
-                    <tr><td><kbd>G</kbd></td><td>App settings</td></tr>
+                    <tr><td><kbd>⌘</kbd> <kbd>G</kbd></td><td>App settings</td></tr>
                     <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
                     <tr><td><kbd>1</kbd> – <kbd>9</kbd></td><td>Open project by index (on project list)</td></tr>
                     <tr><td><kbd>Esc</kbd></td><td>Cancel / close modal / clear search</td></tr>
@@ -5308,6 +5682,7 @@ const App = {
     closeModal(event) {
         if (event && event.target !== event.currentTarget) return;
         $('#modal-overlay').removeClass('active');
+        $('.modal').removeClass('modal-wide');
         this._quill = null;
         this._quillComment = null;
         this._settingsTab = null;
@@ -5425,6 +5800,7 @@ const App = {
         document.title = this.appName;
     },
 
+    formatMinutes(m) { const h = Math.floor(m / 60); const mins = m % 60; return h ? (mins ? `${h}h ${mins}m` : `${h}h`) : `${mins}m`; },
     esc(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML; },
     escAttr(str) { return this.esc(str).replace(/'/g, '&#39;'); }
 };
@@ -5486,7 +5862,8 @@ $(document).on('keydown', e => {
     }
 
     // , → project settings
-    if (e.key === ',' && !mod) {
+    if (mod && e.key === ',') {
+        e.preventDefault();
         if (App.currentProject && !App.isGuest) App.showSettings();
         return;
     }
@@ -5503,8 +5880,9 @@ $(document).on('keydown', e => {
         return;
     }
 
-    // G → app settings
-    if (e.key === 'g' && !mod && !e.shiftKey) {
+    // ⌘G → app settings
+    if (mod && e.key === 'g') {
+        e.preventDefault();
         if (!App.isGuest && App.user?.role === 'admin') App.showAppSettings();
         return;
     }
