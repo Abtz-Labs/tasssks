@@ -1008,6 +1008,11 @@ assert_true(array_key_exists('title', $card1), 'title field exists in card respo
 assert_true(array_key_exists('description', $card1), 'description field exists in card response');
 assert_true(array_key_exists('id', $card1), 'id field exists in card response (used for data-id)');
 
+assert_true(str_contains($html, 'toggleTheme'), 'toggleTheme function present in HTML');
+assert_true(str_contains($html, 'guest-theme-icon-moon'), 'guest theme moon icon present');
+assert_true(str_contains($html, 'guest-theme-icon-sun'), 'guest theme sun icon present');
+assert_true(str_contains($html, 'guest_can_view_time'), 'guest_can_view_time field referenced in guest navbar');
+
 // ─── WYSIWYG Editor ──────────────────────────────────────
 section('WYSIWYG Editor');
 
@@ -1252,6 +1257,12 @@ assert_eq(200, $r['status'], 'enable guest_can_view_time');
 $r = req('time_report', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
 assert_eq(200, $r['status'], 'guest can access time report when enabled');
 assert_true(isset($r['body']['total_minutes']), 'guest sees report data');
+
+// list_projects includes guest_can_view_time
+$r = req('list_projects');
+$proj = array_values(array_filter($r['body'], fn($p) => $p['id'] === $adminProjectId))[0] ?? null;
+assert_true(isset($proj['guest_can_view_time']), 'list_projects includes guest_can_view_time');
+assert_eq(1, (int)$proj['guest_can_view_time'], 'guest_can_view_time is 1 after enabling');
 
 // Guest cannot create time entries (403 from CSRF check since guest has no CSRF token)
 $r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 30, 'worked_at' => '2026-08-17'], 'POST', '', $guestCookie);

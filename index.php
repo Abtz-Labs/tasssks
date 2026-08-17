@@ -1004,7 +1004,7 @@ function apiListProjects(): void {
     requireAuth();
     $user = getCurrentUser();
     $db = getDb();
-    $projects = $db->query("SELECT id, name, slug, created_at, guest_can_create_cards, guest_can_sort_cards FROM projects ORDER BY created_at DESC")->fetchAll();
+    $projects = $db->query("SELECT id, name, slug, created_at, guest_can_create_cards, guest_can_sort_cards, guest_can_view_time FROM projects ORDER BY created_at DESC")->fetchAll();
 
     foreach ($projects as &$project) {
         $stmt = $db->prepare("
@@ -1040,12 +1040,13 @@ function apiGuestProjectInfo(): void {
     if (!$token) jsonResponse(['error' => 'Missing token'], 400);
 
     $db = getDb();
-    $stmt = $db->prepare("SELECT p.id, p.name, p.slug, p.guest_can_create_cards, p.guest_can_sort_cards, g.name as guest_name, g.email as guest_email FROM guests g JOIN projects p ON g.project_id = p.id WHERE g.token = ?");
+    $stmt = $db->prepare("SELECT p.id, p.name, p.slug, p.guest_can_create_cards, p.guest_can_sort_cards, p.guest_can_view_time, g.name as guest_name, g.email as guest_email FROM guests g JOIN projects p ON g.project_id = p.id WHERE g.token = ?");
     $stmt->execute([$token]);
     $row = $stmt->fetch();
     if (!$row) jsonResponse(['error' => 'Invalid token'], 404);
     $row['guest_can_create_cards'] = (int) $row['guest_can_create_cards'];
     $row['guest_can_sort_cards'] = (int) $row['guest_can_sort_cards'];
+    $row['guest_can_view_time'] = (int) $row['guest_can_view_time'];
     $row['guest_has_email'] = !empty($row['guest_email']);
     unset($row['guest_email']);
     jsonResponse($row);
@@ -3969,6 +3970,10 @@ const App = {
         if (moon) moon.style.display = isDark ? 'none' : 'inline';
         if (sun) sun.style.display = isDark ? 'inline' : 'none';
         if (label) label.textContent = isDark ? 'Light mode' : 'Dark mode';
+        const gSun = document.getElementById('guest-theme-icon-sun');
+        const gMoon = document.getElementById('guest-theme-icon-moon');
+        if (gMoon) gMoon.style.display = isDark ? 'none' : 'inline';
+        if (gSun) gSun.style.display = isDark ? 'inline' : 'none';
     },
 
     handleRoute() {
@@ -4245,10 +4250,18 @@ const App = {
             </div>`;
             if (this.currentProject.guest_has_email) {
                 guestActions += `<button class="btn btn-ghost btn-sm" id="guest-watch-btn" onclick="App._guestWatching ? App.guestUnwatchProject() : App.guestWatchProject()">...</button>`;
-                $('#navbar-actions').html(guestActions);
+            }
+            if (this.currentProject.guest_can_view_time) {
+                guestActions += `<button class="btn btn-ghost btn-sm" onclick="App.showTimeReport()"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> <span class="settings-label">Report</span></button>`;
+            }
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            guestActions += `<button class="btn btn-ghost btn-sm" onclick="App.toggleTheme()">
+                <svg id="guest-theme-icon-moon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" style="${isDark?'display:none':''}"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <svg id="guest-theme-icon-sun" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" style="${isDark?'':'display:none'}"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            </button>`;
+            $('#navbar-actions').html(guestActions);
+            if (this.currentProject.guest_has_email) {
                 this.loadGuestWatchState();
-            } else {
-                $('#navbar-actions').html(guestActions);
             }
             $('#guest-banner').text(`Hey ${this.guestName}! You are viewing this board as a guest.`).removeClass('hidden');
         }
@@ -5331,6 +5344,7 @@ const App = {
 
             const guestCreate = this.currentProject.guest_can_create_cards ? 'checked' : '';
             const guestSort = this.currentProject.guest_can_sort_cards ? 'checked' : '';
+            const guestViewTime = this.currentProject.guest_can_view_time ? 'checked' : '';
             this.openModal('Project Settings', `
                 <div class="settings-tabs">
                     <button class="settings-tab active" onclick="App.switchProjectSettingsTab('general')">General</button>
@@ -5382,6 +5396,10 @@ const App = {
                         <label class="flex-center gap-2 cursor-pointer text-lg font-normal text">
                             <input type="checkbox" id="guest-sort-cards" ${guestSort} onchange="App.updateGuestPerm('guest_can_sort_cards', this.checked)">
                             Allow guests to sort cards in the first column
+                        </label>
+                        <label class="flex-center gap-2 cursor-pointer text-lg font-normal text">
+                            <input type="checkbox" id="guest-view-time" ${guestViewTime} onchange="App.updateGuestPerm('guest_can_view_time', this.checked)">
+                            Allow guests to view the time report
                         </label>
                     </div>
                     <div class="card-detail-section"><h4>Guest Access</h4>

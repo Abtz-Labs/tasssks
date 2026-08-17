@@ -109,6 +109,12 @@ Admins can invite team members from the Account menu (Team section). Members can
 
 Share a project with external collaborators by creating a guest link (project settings). Guests can view the board, add cards, and post comments (but cannot modify structure or settings).
 
+From the Guests tab in project settings, you can configure:
+
+- **Create cards** — allow guests to add cards in the first column.
+- **Sort cards** — allow guests to reorder cards in the first column.
+- **View time report** — allow guests to access the worked time report.
+
 Guests with an email address can watch cards and projects to receive digest notifications.
 
 ### Watching
