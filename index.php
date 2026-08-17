@@ -3951,7 +3951,7 @@ const App = {
             <div class="card" data-id="${card.id}" onclick="App.openCard(${card.id})">
                 ${coverHtml}
                 ${tagsHtml ? `<div class="card-tags">${tagsHtml}</div>` : ''}
-                <div class="card-title flex-between items-start">
+                <div class="card-title flex-between items-start gap-2">
                     <span>${this.esc(card.title)} ${unreadBadge}</span>
                     <span class="text-xs text-light text-nowrap ml-2 inline-flex items-center gap-1">${card.is_watching ? '<svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--primary)" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : ''}#${card.id}</span>
                 </div>
