@@ -32,7 +32,7 @@ define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', 10 * 1024 * 1024); // 10MB
 define('IMAGE_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
-define('GITHUB_RAW_URL', 'https://raw.githubusercontent.com/rogeriotaques/tasssks/main/index.php');
+define('GITHUB_RAW_URL', 'https://raw.githubusercontent.com/Abtz-Labs/tasssks/main/index.php');
 
 // ============================================================================
 // DATABASE SETUP
@@ -4358,7 +4358,7 @@ const App = {
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M3 11h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H3a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z"/><path d="M21 11h-1a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1z"/><path d="M4 11V8a8 8 0 0 1 16 0v3"/><path d="M18 18a4 4 0 0 1-4 4h-2"/></svg>
                         Help
                     </button>
-                    <a class="dropdown-item" href="https://github.com/rogeriotaques/tasssks/issues" target="_blank" rel="noopener noreferrer" onclick="$('.dropdown-menu').removeClass('open')">
+                    <a class="dropdown-item" href="https://github.com/Abtz-Labs/tasssks/issues" target="_blank" rel="noopener noreferrer" onclick="$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         Report a Bug
                         <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2" style="margin-left:auto"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -6155,7 +6155,7 @@ $(document).on('keydown', '#setup-name, #setup-email, #setup-password', e => { i
 $(App.init.bind(App));
 </script>
 <footer class="app-footer">
-  <p>Designed, built, and backed by <a href="https://x.com/rogeriotaques" target="_blank" rel="noopener noreferrer">Rogerio Taques</a>, the guy behind <a href="https://abtz.co" target="_blank" rel="noopener noreferrer">Abtz Labs</a>.</p>
+  <p>Designed, built, and backed by <a href="https://x.com/rogeriotaques" target="_blank" rel="noopener noreferrer">Rogerio Taques</a>, the guy behind <a href="https://abtz.co?ref=Tasssks&utm_source=Tasssks&utm_media=Instance" target="_blank" rel="noopener noreferrer">Abtz Labs</a>.</p>
   <p>#<?= APP_VERSION ?> &copy; Abtz Labs.</p>
 </footer>
 </body>
