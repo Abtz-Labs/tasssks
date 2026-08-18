@@ -33,7 +33,7 @@ Two auth methods:
 
 - **Single-file architecture is intentional.** All code goes in `index.php`. Do not split into multiple files.
 - **No external PHP dependencies.** No Composer, no autoloaders. Implement logic directly.
-- Database migrations use `PRAGMA user_version` in `migrateDatabase()`. Add new migrations as `if ($version < N)` blocks and bump the final `PRAGMA user_version = N` statement.
+- Database migrations use `PRAGMA user_version` in `migrateDatabase()` (currently v5). Add new migrations as `if ($version < N)` blocks and bump the final `PRAGMA user_version = N` statement. Migrations must be idempotent (check column/table existence before ALTER).
 
 ## Testing
 
@@ -41,7 +41,14 @@ Tests run against a real server (port 8089) with a temporary SQLite DB. The test
 
 To run: `just test` or `php test.php`
 
-Tests cover: auth, team, projects, columns, cards, comments, guests, webhooks, watchers, notifications, SMTP, search, security headers, CSRF, rate limiting, file blocking.
+Tests cover: auth, team, projects, columns, cards, comments, guests, webhooks, watchers, notifications, SMTP, search, security headers, CSRF, rate limiting, file blocking, tags, time tracking, code quality checks.
+
+## Key Helpers
+
+- `setSetting(key, value)` — single upsert point for the settings table
+- `rotateRecoveryKey(userId)` — generates and stores a new recovery key
+- `formatEventText(eventType, payload, projectName, actorName, includeContent)` — shared by webhooks and notifications
+- `calcMinutesFromTimes(start, end)` — HH:MM subtraction for time tracking
 
 ## Style
 
@@ -49,3 +56,4 @@ Tests cover: auth, team, projects, columns, cards, comments, guests, webhooks, w
 - API responses use `jsonResponse()` helper.
 - Auth checks: `requireAuth()`, `requireAdmin()`, `requireOwner($projectId)`, `requireAccess($projectId)`.
 - Session-based auth with CSRF tokens. Guest access via token query parameter.
+- When adding user-facing features, update README and in-app help in the same pass.

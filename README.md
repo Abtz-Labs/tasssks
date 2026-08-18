@@ -26,6 +26,7 @@ The entire application (backend logic, frontend markup, CSS, and JavaScript) liv
 - Webhook integrations (Slack, Telegram, generic JSON)
 - Email notifications via SMTP (immediate or daily digest)
 - Queue-based email delivery (non-blocking, cron-powered)
+- Time tracking with start/end times or manual duration entry
 - Built-in auto-update checker (admin only)
 
 ## Requirements
@@ -121,6 +122,18 @@ Guests with an email address can watch cards and projects to receive digest noti
 ### Watching
 
 Click the eye icon on a project or card to watch it. Watchers receive notifications when activity occurs. You automatically watch cards you create or comment on.
+
+### Time Tracking
+
+Track time spent on cards. Click the stopwatch icon on any card to open the time section. Three ways to log time:
+
+- **Start/End times** — fill start time when you begin, come back later to fill end time. The duration is calculated automatically. Use the clock buttons to set the current time with one click.
+- **Manual duration** — type directly in the duration field (e.g. `1h30m`, `45m`, `2h`).
+- **In-progress entries** — set only a start time to mark work as ongoing. An "End" button appears in the entry list to complete it later.
+
+Time entries include the date and an optional note. View aggregated reports per project from the board header (group by card, user, or day; filter by period; export to CSV).
+
+Guests can view time reports if enabled in project settings (Guests tab → "View time report").
 
 ### Notifications
 

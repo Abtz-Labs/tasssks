@@ -1253,6 +1253,37 @@ assert_eq(0, count($r['body']), 'no tokens after revoke');
 $r = req('revoke_api_token', ['id' => 99999], 'POST', $adminCsrf);
 assert_eq(404, $r['status'], 'revoke non-existent token returns 404');
 
+// ─── TAGS ──────────────────────────────────────────────
+section('Tags');
+
+// Create tag with explicit color
+$r = req('create_tag', ['project_id' => $adminProjectId, 'name' => 'Urgent', 'color' => '#ef4444'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create tag with color returns 200');
+$tagId = $r['body']['id'];
+
+// List tags — verify color is persisted
+$r = req('list_tags', ['project_id' => $adminProjectId], 'GET', '', $cookieFile);
+assert_eq(200, $r['status'], 'list tags returns 200');
+$urgentTag = array_values(array_filter($r['body'], fn($t) => $t['id'] == $tagId))[0] ?? null;
+assert_eq('#ef4444', $urgentTag['color'], 'tag color persisted correctly');
+assert_eq('Urgent', $urgentTag['name'], 'tag name persisted correctly');
+
+// Create tag with default color (no color param)
+$r = req('create_tag', ['project_id' => $adminProjectId, 'name' => 'Nice to have'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create tag without color returns 200');
+$tagId2 = $r['body']['id'];
+$r = req('list_tags', ['project_id' => $adminProjectId], 'GET', '', $cookieFile);
+$defaultTag = array_values(array_filter($r['body'], fn($t) => $t['id'] == $tagId2))[0] ?? null;
+assert_eq('#3b82f6', $defaultTag['color'], 'tag gets default color when none specified');
+
+// Create tag — missing name fails
+$r = req('create_tag', ['project_id' => $adminProjectId, 'name' => '', 'color' => '#22c55e'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'create tag without name fails');
+
+// Clean up tags
+req('delete_tag', ['id' => $tagId], 'POST', $adminCsrf);
+req('delete_tag', ['id' => $tagId2], 'POST', $adminCsrf);
+
 // Create admin API token for time tracking tests (bypasses rate limiter for team_add)
 $r = req('create_api_token', ['name' => 'Admin For Time'], 'POST', $adminCsrf);
 $adminBearerToken = $r['body']['token'];
@@ -1391,6 +1422,65 @@ $r = req('time_report', ['project_id' => $adminProjectId, 'format' => 'csv'], 'G
 assert_eq(200, $r['status'], 'csv export returns 200');
 assert_true(str_contains($r['raw'], 'Card,Author,Minutes,Date,Note'), 'csv has header row');
 
+// --- Start/End time feature ---
+
+// Create entry with start_time and end_time → auto-calculates minutes
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '09:00', 'end_time' => '11:30', 'worked_at' => '2026-08-18'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create time entry with start/end times');
+$startEndEntryId = $r['body']['id'];
+
+// List shows start_time, end_time, and calculated minutes (150 = 2h30m)
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$startEndEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $startEndEntryId))[0] ?? null;
+assert_eq('09:00', $startEndEntry['start_time'], 'start_time stored');
+assert_eq('11:30', $startEndEntry['end_time'], 'end_time stored');
+assert_eq(150, (int)$startEndEntry['minutes'], 'minutes auto-calculated from start/end (2h30m = 150)');
+
+// Create in-progress entry (start_time only, no end_time, no minutes)
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '14:00', 'worked_at' => '2026-08-18'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create in-progress entry (start_time only)');
+$inProgressEntryId = $r['body']['id'];
+
+// In-progress entry has minutes=0
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$inProgressEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $inProgressEntryId))[0] ?? null;
+assert_eq('14:00', $inProgressEntry['start_time'], 'in-progress start_time stored');
+assert_eq(null, $inProgressEntry['end_time'], 'in-progress end_time is null');
+assert_eq(0, (int)$inProgressEntry['minutes'], 'in-progress minutes is 0');
+
+// Update time entry — fill end_time → auto-calculates minutes
+$r = req('update_time_entry', ['id' => $inProgressEntryId, 'end_time' => '16:45'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'update time entry with end_time');
+
+// Verify update calculated minutes (14:00→16:45 = 165 min)
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$updatedEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $inProgressEntryId))[0] ?? null;
+assert_eq('16:45', $updatedEntry['end_time'], 'end_time updated');
+assert_eq(165, (int)$updatedEntry['minutes'], 'minutes recalculated after update (2h45m = 165)');
+
+// Update time entry — change note
+$r = req('update_time_entry', ['id' => $inProgressEntryId, 'note' => 'Updated note'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'update time entry note');
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$updatedEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $inProgressEntryId))[0] ?? null;
+assert_eq('Updated note', $updatedEntry['note'], 'note updated');
+
+// Update time entry — not found
+$r = req('update_time_entry', ['id' => 99999, 'note' => 'x'], 'POST', $adminCsrf);
+assert_eq(404, $r['status'], 'update non-existent time entry returns 404');
+
+// Update time entry — member cannot update admin's entry
+$r = reqBearer('update_time_entry', $timeMemberTokenRaw, ['id' => $inProgressEntryId, 'note' => 'Hijack'], 'POST');
+assert_eq(403, $r['status'], 'member cannot update others time entry');
+
+// Zero minutes still fails without start_time
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 0, 'worked_at' => '2026-08-18'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'zero minutes without start_time still fails');
+
+// Clean up: delete test entries
+$r = req('delete_time_entry', ['id' => $startEndEntryId], 'POST', $adminCsrf);
+$r = req('delete_time_entry', ['id' => $inProgressEntryId], 'POST', $adminCsrf);
+
 // ─── UPDATES ──────────────────────────────────────────────
 section('Updates');
 
@@ -1468,6 +1558,9 @@ assert_eq(1, $rawRotateCount, 'recovery key update only appears in rotateRecover
 // Dead code removed
 assert_true(!str_contains($src, 'QUILL_TOOLBAR_FULL'), 'QUILL_TOOLBAR_FULL removed (consolidated)');
 assert_true(!str_contains($src, 'QUILL_TOOLBAR_COMPACT'), 'QUILL_TOOLBAR_COMPACT removed (consolidated)');
+
+// selectTagColor must not hardcode a specific hidden input ID (bug: project settings uses different ID)
+assert_true(!str_contains($src, "selectTagColor(el, color) {\n") || !str_contains($src, "\$('#new-tag-color').val(color)"), 'selectTagColor does not hardcode new-tag-color input');
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . str_repeat('=', 40) . "\n";

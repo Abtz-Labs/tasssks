@@ -292,7 +292,18 @@ function migrateDatabase(PDO $db): void {
         }
     }
 
-    $db->exec('PRAGMA user_version = 4');
+    // Version 4 → 5: Time entry start/end times
+    if ($version < 5) {
+        $cols = array_column($db->query("PRAGMA table_info(time_entries)")->fetchAll(), 'name');
+        if (!in_array('start_time', $cols)) {
+            $db->exec("ALTER TABLE time_entries ADD COLUMN start_time TEXT");
+        }
+        if (!in_array('end_time', $cols)) {
+            $db->exec("ALTER TABLE time_entries ADD COLUMN end_time TEXT");
+        }
+    }
+
+    $db->exec('PRAGMA user_version = 5');
 }
 
 // ============================================================================
@@ -676,6 +687,7 @@ if ($action) {
         // Time Tracking
         'list_time_entries' => apiListTimeEntries(),
         'create_time_entry' => apiCreateTimeEntry(),
+        'update_time_entry' => apiUpdateTimeEntry(),
         'delete_time_entry' => apiDeleteTimeEntry(),
         'time_report' => apiTimeReport(),
 
@@ -2513,6 +2525,12 @@ function apiSendDigest(): void {
 // API: TIME TRACKING
 // ============================================================================
 
+function calcMinutesFromTimes(string $start, string $end): int {
+    [$sh, $sm] = array_map('intval', explode(':', $start));
+    [$eh, $em] = array_map('intval', explode(':', $end));
+    return max(0, ($eh * 60 + $em) - ($sh * 60 + $sm));
+}
+
 function apiCreateTimeEntry(): void {
     requireAuth();
     $user = getCurrentUser();
@@ -2522,10 +2540,19 @@ function apiCreateTimeEntry(): void {
     $minutes = (int) ($input['minutes'] ?? 0);
     $workedAt = trim($input['worked_at'] ?? '');
     $note = trim($input['note'] ?? '');
+    $startTime = trim($input['start_time'] ?? '');
+    $endTime = trim($input['end_time'] ?? '');
 
     if (!$cardId) jsonResponse(['error' => 'card_id is required'], 400);
-    if ($minutes <= 0) jsonResponse(['error' => 'minutes must be greater than 0'], 400);
     if (!$workedAt) jsonResponse(['error' => 'worked_at is required'], 400);
+
+    if ($startTime && $endTime) {
+        $minutes = calcMinutesFromTimes($startTime, $endTime);
+    } elseif ($startTime) {
+        $minutes = 0;
+    } elseif ($minutes <= 0) {
+        jsonResponse(['error' => 'minutes must be greater than 0'], 400);
+    }
 
     $db = getDb();
     $card = $db->prepare("SELECT c.title, col.project_id FROM cards c JOIN columns_ col ON c.column_id = col.id WHERE c.id = ?");
@@ -2533,10 +2560,42 @@ function apiCreateTimeEntry(): void {
     $card = $card->fetch();
     if (!$card) jsonResponse(['error' => 'Card not found'], 404);
 
-    $stmt = $db->prepare("INSERT INTO time_entries (project_id, card_id, card_title, user_id, author_name, minutes, note, worked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$card['project_id'], $cardId, $card['title'], $user['id'], $user['name'], $minutes, $note, $workedAt]);
+    $stmt = $db->prepare("INSERT INTO time_entries (project_id, card_id, card_title, user_id, author_name, minutes, note, worked_at, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$card['project_id'], $cardId, $card['title'], $user['id'], $user['name'], $minutes, $note, $workedAt, $startTime ?: null, $endTime ?: null]);
 
     jsonResponse(['id' => (int) $db->lastInsertId()]);
+}
+
+function apiUpdateTimeEntry(): void {
+    requireAuth();
+    $user = getCurrentUser();
+    $input = getInput();
+    $id = (int) ($input['id'] ?? 0);
+    if (!$id) jsonResponse(['error' => 'id is required'], 400);
+
+    $db = getDb();
+    $entry = $db->prepare("SELECT * FROM time_entries WHERE id = ?");
+    $entry->execute([$id]);
+    $entry = $entry->fetch();
+    if (!$entry) jsonResponse(['error' => 'Time entry not found'], 404);
+
+    if ($entry['user_id'] !== $user['id'] && !isProjectOwner($entry['project_id'])) {
+        jsonResponse(['error' => 'Forbidden'], 403);
+    }
+
+    $startTime = array_key_exists('start_time', $input) ? trim($input['start_time']) : $entry['start_time'];
+    $endTime = array_key_exists('end_time', $input) ? trim($input['end_time']) : $entry['end_time'];
+    $note = array_key_exists('note', $input) ? trim($input['note']) : $entry['note'];
+    $minutes = (int) $entry['minutes'];
+
+    if ($startTime && $endTime) {
+        $minutes = calcMinutesFromTimes($startTime, $endTime);
+    }
+
+    $stmt = $db->prepare("UPDATE time_entries SET start_time = ?, end_time = ?, note = ?, minutes = ? WHERE id = ?");
+    $stmt->execute([$startTime ?: null, $endTime ?: null, $note, $minutes, $id]);
+
+    jsonResponse(['ok' => true]);
 }
 
 function apiListTimeEntries(): void {
@@ -2574,7 +2633,7 @@ function apiListTimeEntries(): void {
     if ($from) { $where[] = 'te.worked_at >= ?'; $params[] = $from; }
     if ($to) { $where[] = 'te.worked_at <= ?'; $params[] = $to; }
 
-    $sql = "SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at, te.created_at FROM time_entries te WHERE " . implode(' AND ', $where) . " ORDER BY te.worked_at DESC, te.created_at DESC";
+    $sql = "SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at, te.start_time, te.end_time, te.created_at FROM time_entries te WHERE " . implode(' AND ', $where) . " ORDER BY te.worked_at DESC, te.created_at DESC";
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
     jsonResponse($stmt->fetchAll());
@@ -2649,7 +2708,7 @@ function apiTimeReport(): void {
     $totalMinutes = (int) $stmt->fetchColumn();
 
     // Entries with card info
-    $stmt = $db->prepare("SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at FROM time_entries te WHERE $whereSql ORDER BY te.worked_at DESC, te.created_at DESC");
+    $stmt = $db->prepare("SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at, te.start_time, te.end_time FROM time_entries te WHERE $whereSql ORDER BY te.worked_at DESC, te.created_at DESC");
     $stmt->execute($params);
     $entries = $stmt->fetchAll();
 
@@ -3043,9 +3102,10 @@ body {
 .btn-danger:hover { background: var(--danger); color: #fff; }
 
 .btn-sm { height: 30px; padding: 0 10px; font-size: 12px; }
+.btn-xs { height: 24px; padding: 0 6px; font-size: 11px; min-width: auto; }
 
 /* Forms */
-input[type="text"], input[type="email"], input[type="password"], input[type="date"], textarea, select {
+input[type="text"], input[type="email"], input[type="password"], input[type="date"], input[type="time"], textarea, select {
     width: 100%;
     height: var(--input-height);
     padding: 0 12px;
@@ -3566,11 +3626,20 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 /* Time tracking */
 .card-detail-actions-col { display: flex; flex-direction: column; gap: 4px; }
 .time-section { padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
-.time-input { width: 80px; }
+.time-form { display: flex; flex-direction: column; gap: 8px; }
+.time-form-row { display: flex; gap: 8px; align-items: center; }
+.time-form-row .time-arrow { color: var(--text-muted); flex: none; }
+.time-form-row .time-input { width: 90px; flex: none; }
+.time-form-row input[type="date"] { width: 140px; flex: none; }
+.time-form-row .flex-1 { flex: 1; min-width: 0; }
+.time-input-group { display: flex; align-items: center; flex: none; }
+.time-input-group input[type="time"] { width: 100px; border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }
+.time-now-btn { height: var(--input-height); padding: 0 8px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.02em; border: 1px solid var(--border); border-left: none; border-radius: 0 var(--radius) var(--radius) 0; }
 .time-entries-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .time-entries-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-weight: 500; color: var(--text-muted); }
 .time-entries-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
-.time-entries-table td:last-child { width: 32px; text-align: center; }
+.time-entries-table td:last-child { width: auto; text-align: right; white-space: nowrap; }
+.time-entries-table tr.in-progress td:first-child { color: var(--primary); }
 
 /* Time report */
 .report-controls { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
@@ -4800,11 +4869,24 @@ const App = {
                 </div>
             </div>
             <div id="time-section-${cardId}" class="hidden time-section">
-                <div class="form-row mb-2">
-                    <input type="text" id="time-input" placeholder="1h30m" class="time-input">
-                    <input type="date" id="time-date" value="${new Date().toISOString().slice(0,10)}">
-                    <input type="text" id="time-note" placeholder="Note (optional)" class="flex-1">
-                    <button type="button" class="btn btn-primary btn-sm" onclick="App.addTimeEntry(${cardId})">+</button>
+                <div class="time-form">
+                    <div class="time-form-row">
+                        <div class="time-input-group">
+                            <input type="time" id="time-start" title="Start time">
+                            <button type="button" class="btn btn-ghost time-now-btn" onclick="App.setTimeNow('time-start')" title="Set current time">Now</button>
+                        </div>
+                        <span class="time-arrow">→</span>
+                        <div class="time-input-group">
+                            <input type="time" id="time-end" title="End time">
+                            <button type="button" class="btn btn-ghost time-now-btn" onclick="App.setTimeNow('time-end')" title="Set current time">Now</button>
+                        </div>
+                        <input type="date" id="time-date" value="${new Date().toISOString().slice(0,10)}">
+                    </div>
+                    <div class="time-form-row">
+                        <input type="text" id="time-input" placeholder="0h 00m" class="time-input" title="Duration (auto-calculated or manual)">
+                        <input type="text" id="time-note" placeholder="Note (optional)" class="flex-1">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="App.addTimeEntry(${cardId})">+</button>
+                    </div>
                 </div>
                 <div id="time-entries-${cardId}"></div>
             </div>
@@ -4958,7 +5040,7 @@ const App = {
     selectTagColor(el, color) {
         $(el).parent().find('.tag-color-dot, .tag-color-dot-lg').removeClass('selected');
         $(el).addClass('selected');
-        $('#new-tag-color').val(color);
+        $(el).parent().find('input[type="hidden"]').val(color);
     },
 
     createTag() {
@@ -5235,6 +5317,7 @@ const App = {
         const section = $(`#time-section-${cardId}`);
         if (section.hasClass('hidden')) {
             section.removeClass('hidden');
+            $('#time-start, #time-end').off('change').on('change', () => this.calcTimeFromStartEnd());
             this.loadTimeEntries(cardId);
         } else {
             section.addClass('hidden');
@@ -5247,15 +5330,22 @@ const App = {
                 $(`#time-entries-${cardId}`).html('<p class="text-muted text-sm">No time entries yet.</p>');
                 return;
             }
-            const rows = entries.map(e => `
-                <tr>
-                    <td><strong>${this.formatMinutes(e.minutes)}</strong></td>
+            const rows = entries.map(e => {
+                const inProgress = e.start_time && !e.end_time;
+                const timeCol = inProgress
+                    ? `<span class="text-muted">${e.start_time} → ?</span>`
+                    : (e.start_time ? `${e.start_time}→${e.end_time} (${this.formatMinutes(e.minutes)})` : `<strong>${this.formatMinutes(e.minutes)}</strong>`);
+                const actions = inProgress
+                    ? `<button type="button" class="btn btn-primary btn-xs" onclick="App.endTimeEntry(${e.id},${cardId})" title="End now">End</button> `
+                    : '';
+                return `<tr${inProgress ? ' class="in-progress"' : ''}>
+                    <td>${timeCol}</td>
                     <td>${e.worked_at}</td>
                     <td>${this.esc(e.note)}</td>
                     <td>${this.esc(e.author_name)}</td>
-                    <td><button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button></td>
-                </tr>
-            `).join('');
+                    <td>${actions}<button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button></td>
+                </tr>`;
+            }).join('');
             $(`#time-entries-${cardId}`).html(`
                 <table class="time-entries-table">
                     <thead><tr><th>Time</th><th>Date</th><th>Note</th><th>By</th><th></th></tr></thead>
@@ -5265,17 +5355,69 @@ const App = {
         });
     },
 
+    setTimeNow(inputId) {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        $(`#${inputId}`).val(`${hh}:${mm}`).trigger('change');
+    },
+
+    calcTimeFromStartEnd() {
+        const start = $('#time-start').val();
+        const end = $('#time-end').val();
+        if (start && end) {
+            const [sh, sm] = start.split(':').map(Number);
+            const [eh, em] = end.split(':').map(Number);
+            const mins = (eh * 60 + em) - (sh * 60 + sm);
+            if (mins > 0) {
+                const h = Math.floor(mins / 60);
+                const m = mins % 60;
+                $('#time-input').val((h ? h + 'h' : '') + (m ? m + 'm' : ''));
+            } else {
+                $('#time-input').val('');
+            }
+        }
+    },
+
     addTimeEntry(cardId) {
+        const startTime = $('#time-start').val().trim();
+        const endTime = $('#time-end').val().trim();
         const raw = $('#time-input').val().trim();
-        if (!raw) { $('#time-input').focus(); return; }
-        const minutes = this.parseTime(raw);
-        if (!minutes) { $('#time-input').focus(); return; }
+        if (!startTime && !raw) { $('#time-start').focus(); return; }
+        if (raw && !startTime) {
+            const minutes = this.parseTime(raw);
+            if (!minutes) { $('#time-input').focus(); return; }
+        }
         const workedAt = $('#time-date').val();
         const note = $('#time-note').val().trim();
-        this.api('create_time_entry', { card_id: cardId, minutes, worked_at: workedAt, note }, 'POST').done(() => {
+        const data = { card_id: cardId, worked_at: workedAt, note };
+        if (startTime) data.start_time = startTime;
+        if (endTime) data.end_time = endTime;
+        if (!startTime || !endTime) {
+            const minutes = this.parseTime(raw);
+            if (minutes) data.minutes = minutes;
+        }
+        this.api('create_time_entry', data, 'POST').done(() => {
+            $('#time-start').val('');
+            $('#time-end').val('');
             $('#time-input').val('');
             $('#time-note').val('');
             $(`#time-section-${cardId}`).addClass('hidden');
+            this.toast('Time entry saved.', 'success');
+            this.loadTimeEntries(cardId);
+            this.api('list_time_entries', { card_id: cardId }).done(entries => {
+                const total = entries.reduce((s, e) => s + e.minutes, 0);
+                $(`#time-total-${cardId}`).text(this.formatMinutes(total));
+            });
+        });
+    },
+
+    endTimeEntry(id, cardId) {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        this.api('update_time_entry', { id, end_time: `${hh}:${mm}` }, 'POST').done(() => {
+            this.toast('Timer ended.', 'success');
             this.loadTimeEntries(cardId);
             this.api('list_time_entries', { card_id: cardId }).done(entries => {
                 const total = entries.reduce((s, e) => s + e.minutes, 0);
