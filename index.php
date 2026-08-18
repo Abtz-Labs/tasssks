@@ -361,6 +361,34 @@ function slugify(string $text): string {
     return trim($text, '-');
 }
 
+function setSetting(string $key, string $value): void {
+    getDb()->prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?")
+        ->execute([$key, $value, $value]);
+}
+
+function rotateRecoveryKey(int $userId): string {
+    $key = bin2hex(random_bytes(16));
+    getDb()->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")
+        ->execute([hash('sha256', $key), $userId]);
+    return $key;
+}
+
+function formatEventText(string $eventType, array $payload, string $projectName, ?string $actorName, bool $includeContent = false): string {
+    $actor = $actorName ?: 'Someone';
+    $text = match ($eventType) {
+        'new_card' => "$actor created card \"{$payload['title']}\" in $projectName",
+        'new_comment' => "$actor commented on \"{$payload['card_title']}\" in $projectName",
+        'card_updated' => "$actor updated card \"{$payload['title']}\" in $projectName",
+        'new_project' => "$actor created project \"$projectName\"",
+        'password_changed' => "$actor changed their password",
+        default => "$actor triggered $eventType in $projectName",
+    };
+    if ($includeContent && $eventType === 'new_comment' && !empty($payload['content'])) {
+        $text .= ": {$payload['content']}";
+    }
+    return $text;
+}
+
 function hasUsers(): bool {
     $db = getDb();
     $stmt = $db->query("SELECT COUNT(*) as cnt FROM users");
@@ -474,15 +502,7 @@ function dispatchWebhooks(string $projectId, string $eventType, array $payload, 
 }
 
 function formatWebhookPayload(string $hookType, string $eventType, array $payload, string $projectName, ?string $actorName): string {
-    $actor = $actorName ?: 'Someone';
-    $text = match ($eventType) {
-        'new_card' => "$actor created card \"{$payload['title']}\" in $projectName",
-        'new_comment' => "$actor commented on \"{$payload['card_title']}\" in $projectName: {$payload['content']}",
-        'card_updated' => "$actor updated card \"{$payload['title']}\" in $projectName",
-        'new_project' => "$actor created project \"$projectName\"",
-        'password_changed' => "$actor changed their password",
-        default => "$actor triggered $eventType in $projectName",
-    };
+    $text = formatEventText($eventType, $payload, $projectName, $actorName, true);
 
     return match ($hookType) {
         'slack' => json_encode(['text' => $text]),
@@ -726,8 +746,7 @@ function apiAuthSetup(): void {
     $stmt->execute([$name, $email, $hash]);
     $userId = (int) $db->lastInsertId();
 
-    $recoveryKey = bin2hex(random_bytes(16));
-    $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $recoveryKey), $userId]);
+    $recoveryKey = rotateRecoveryKey($userId);
 
     session_regenerate_id(true);
     $_SESSION['user_id'] = $userId;
@@ -746,10 +765,8 @@ function checkRateLimit(): void {
     $window = 15; // minutes
     $maxAttempts = 15;
 
-    // Clean old attempts
     $db->prepare("DELETE FROM login_attempts WHERE attempted_at < datetime('now', ?)")->execute(["-$window minutes"]);
 
-    // Count recent attempts
     $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM login_attempts WHERE ip = ? AND attempted_at > datetime('now', ?)");
     $stmt->execute([$ip, "-$window minutes"]);
     $count = (int) $stmt->fetch()['cnt'];
@@ -804,26 +821,20 @@ function apiAuthLogin(): void {
             recordFailedAttempt();
             jsonResponse(['error' => 'Invalid recovery key'], 403);
         }
-        $newKey = bin2hex(random_bytes(16));
-        $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $newKey), $user['id']]);
-        $response['recovery_key'] = $newKey;
+        $response['recovery_key'] = rotateRecoveryKey($user['id']);
         $passwordResetRequired = true;
     } else {
         if (!password_verify($password, $user['password_hash'])) {
             $candidateHash = hash('sha256', str_replace('-', '', strtolower(trim($password))));
             if ($user['recovery_key_hash'] && hash_equals($user['recovery_key_hash'], $candidateHash)) {
-                $newKey = bin2hex(random_bytes(16));
-                $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $newKey), $user['id']]);
-                $response['recovery_key'] = $newKey;
+                $response['recovery_key'] = rotateRecoveryKey($user['id']);
                 $passwordResetRequired = true;
             } else {
                 recordFailedAttempt();
                 jsonResponse(['error' => 'Invalid email or password'], 403);
             }
         } elseif (!$user['recovery_key_hash']) {
-            $newKey = bin2hex(random_bytes(16));
-            $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $newKey), $user['id']]);
-            $response['recovery_key'] = $newKey;
+            $response['recovery_key'] = rotateRecoveryKey($user['id']);
             $passwordResetRequired = true;
         }
     }
@@ -851,8 +862,7 @@ function apiAuthSetAppName(): void {
     $name = trim($input['name'] ?? '');
     if (!$name) jsonResponse(['error' => 'Name cannot be empty'], 400);
 
-    $db = getDb();
-    $db->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_name', ?)")->execute([$name]);
+    setSetting('app_name', $name);
     jsonResponse(['ok' => true]);
 }
 
@@ -877,14 +887,12 @@ function apiAccountUpdate(): void {
 
     $db = getDb();
 
-    // Check email uniqueness
     $stmt = $db->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
     $stmt->execute([$email, $user['id']]);
     if ($stmt->fetch()) {
         jsonResponse(['error' => 'Email already in use'], 400);
     }
 
-    // If changing password, verify current password (unless recovery-key login without current_password)
     if ($password) {
         if (strlen($password) < 6) {
             jsonResponse(['error' => 'New password must be at least 6 characters'], 400);
@@ -933,10 +941,7 @@ function apiRegenerateRecoveryKey(): void {
         jsonResponse(['error' => 'Invalid password'], 403);
     }
 
-    $newKey = bin2hex(random_bytes(16));
-    $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $newKey), $user['id']]);
-
-    jsonResponse(['ok' => true, 'recovery_key' => $newKey]);
+    jsonResponse(['ok' => true, 'recovery_key' => rotateRecoveryKey($user['id'])]);
 }
 
 // ============================================================================
@@ -1042,7 +1047,6 @@ function apiTeamRemove(): void {
 
     $db = getDb();
 
-    // Transfer orphaned projects to current admin
     $stmt = $db->prepare("
         SELECT po.project_id FROM project_owners po
         WHERE po.user_id = ?
@@ -1173,14 +1177,10 @@ function apiCreateProject(): void {
     $stmt = $db->prepare("INSERT INTO projects (id, name, slug) VALUES (?, ?, ?)");
     $stmt->execute([$projectId, $name, $slug]);
 
-    // Assign creator as owner
     $db->prepare("INSERT INTO project_owners (project_id, user_id) VALUES (?, ?)")
         ->execute([$projectId, $user['id']]);
-
-    // Auto-watch the project
     autoWatchProject($projectId, $user['id']);
 
-    // Create default columns
     $defaults = ['To Do', 'In Progress', 'Done'];
     foreach ($defaults as $i => $col) {
         $stmt = $db->prepare("INSERT INTO columns_ (project_id, name, position) VALUES (?, ?, ?)");
@@ -1236,7 +1236,6 @@ function apiDeleteProject(): void {
     requireOwner($id);
     $db = getDb();
 
-    // Remove uploads
     $uploadPath = UPLOAD_DIR . "/$id";
     if (is_dir($uploadPath)) {
         $files = new RecursiveIteratorIterator(
@@ -1370,7 +1369,6 @@ function apiListCards(): void {
     $userId = $user ? $user['id'] : 0;
     $guest = getGuestInfo($projectId);
 
-    // Attach tags, attachments, and watcher info
     foreach ($cards as &$card) {
         $tagStmt = $db->prepare("SELECT t.* FROM tags t JOIN card_tags ct ON t.id = ct.tag_id WHERE ct.card_id = ?");
         $tagStmt->execute([$card['id']]);
@@ -1507,7 +1505,6 @@ function apiDeleteCard(): void {
     $row = $card->fetch();
     if (!$row) jsonResponse(['error' => 'Not found'], 404);
 
-    // Remove card attachments from disk
     $atts = $db->prepare("SELECT path FROM attachments WHERE card_id = ?");
     $atts->execute([$id]);
     foreach ($atts->fetchAll() as $att) {
@@ -1554,7 +1551,6 @@ function apiMoveCard(): void {
     $stmt = $db->prepare("UPDATE cards SET column_id = ?, position = ?, updated_at = datetime('now') WHERE id = ?");
     $stmt->execute([$newColumnId, $newPosition, $id]);
 
-    // Reorder other cards in target column
     $others = $db->prepare("SELECT id FROM cards WHERE column_id = ? AND id != ? ORDER BY position");
     $others->execute([$newColumnId, $id]);
     $pos = 0;
@@ -2212,12 +2208,12 @@ function apiUpdateNotificationSettings(): void {
 function getSmtpSettings(): array {
     $db = getDb();
     $keys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from_email', 'smtp_from_name', 'smtp_encryption'];
-    $settings = [];
-    foreach ($keys as $k) {
-        $stmt = $db->prepare("SELECT value FROM settings WHERE key = ?");
-        $stmt->execute([$k]);
-        $row = $stmt->fetch();
-        $settings[$k] = $row ? $row['value'] : '';
+    $placeholders = implode(',', array_fill(0, count($keys), '?'));
+    $rows = $db->prepare("SELECT key, value FROM settings WHERE key IN ($placeholders)");
+    $rows->execute($keys);
+    $settings = array_fill_keys($keys, '');
+    foreach ($rows->fetchAll() as $row) {
+        $settings[$row['key']] = $row['value'];
     }
     $settings['smtp_port'] = (int) ($settings['smtp_port'] ?: 587);
     if (!$settings['smtp_encryption']) $settings['smtp_encryption'] = 'tls';
@@ -2268,8 +2264,7 @@ function apiUpdateSmtpSettings(): void {
     }
 
     foreach ($fields as $k => $v) {
-        $db->prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?")
-            ->execute([$k, (string) $v, (string) $v]);
+        setSetting($k, (string) $v);
     }
     jsonResponse(['ok' => true]);
 }
@@ -2304,9 +2299,7 @@ function apiTestSmtp(): void {
 function apiGenerateCronToken(): void {
     requireAdmin();
     $token = generateToken(32);
-    $db = getDb();
-    $db->prepare("INSERT INTO settings (key, value) VALUES ('cron_token', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
-        ->execute([$token, $token]);
+    setSetting('cron_token', $token);
     jsonResponse(['token' => $token]);
 }
 
@@ -2361,19 +2354,11 @@ function getUnsentNotifsForUsers(array $pending, string $deliveryFilter): array 
 
 function formatNotifLine(array $n): string {
     $p = json_decode($n['payload'], true);
-    $actor = $n['actor_name'] ?: 'Someone';
     $db = getDb();
     $projStmt = $db->prepare("SELECT name FROM projects WHERE id = ?");
     $projStmt->execute([$n['project_id']]);
     $projName = $projStmt->fetch()['name'] ?? '';
-    return match ($n['event_type']) {
-        'new_card' => "$actor created card \"{$p['title']}\" in $projName",
-        'new_comment' => "$actor commented on \"{$p['card_title']}\" in $projName",
-        'card_updated' => "$actor updated card \"{$p['title']}\" in $projName",
-        'new_project' => "$actor created project \"$projName\"",
-        'password_changed' => "$actor changed their password",
-        default => "$actor triggered {$n['event_type']} in $projName",
-    };
+    return formatEventText($n['event_type'], $p, $projName, $n['actor_name']);
 }
 
 function getUserEmail(int $userId): string {
@@ -2454,8 +2439,7 @@ function apiSendDigest(): void {
     $db = getDb();
     $pending = $db->query("SELECT * FROM notification_queue WHERE delivered = 0 ORDER BY created_at")->fetchAll();
     if (!$pending) {
-        $db->prepare("INSERT INTO settings (key, value) VALUES ('last_digest_at', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
-            ->execute([date('c'), date('c')]);
+        setSetting('last_digest_at', date('c'));
         jsonResponse(['ok' => true, 'processed' => 0]);
     }
 
@@ -2520,8 +2504,7 @@ function apiSendDigest(): void {
         $db->prepare("UPDATE notification_queue SET delivered = 1 WHERE id IN ($placeholders)")->execute($ids);
     }
 
-    $db->prepare("INSERT INTO settings (key, value) VALUES ('last_digest_at', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
-        ->execute([date('c'), date('c')]);
+    setSetting('last_digest_at', date('c'));
 
     jsonResponse(['ok' => true, 'processed' => $processed]);
 }
@@ -2726,17 +2709,11 @@ function apiCheckUpdate(): void {
     $latestVersion = $m[1];
     $available = version_compare(APP_VERSION, $latestVersion, '<');
 
-    // Cache result
     $now = date('c');
-    $db->prepare("INSERT INTO settings (key, value) VALUES ('latest_version', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
-        ->execute([$latestVersion, $latestVersion]);
-    $db->prepare("INSERT INTO settings (key, value) VALUES ('update_available', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
-        ->execute([$available ? '1' : '0', $available ? '1' : '0']);
-    $db->prepare("INSERT INTO settings (key, value) VALUES ('last_update_check_at', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
-        ->execute([$now, $now]);
-    // Cache the full content for apply_update
-    $db->prepare("INSERT INTO settings (key, value) VALUES ('latest_content', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
-        ->execute([$content, $content]);
+    setSetting('latest_version', $latestVersion);
+    setSetting('update_available', $available ? '1' : '0');
+    setSetting('last_update_check_at', $now);
+    setSetting('latest_content', $content);
 
     jsonResponse([
         'update_available' => $available,
@@ -4087,19 +4064,17 @@ class MarkdownShortcuts {
 }
 Quill.register('modules/markdownShortcuts', MarkdownShortcuts);
 
-const QUILL_TOOLBAR_FULL = [
+const QUILL_TOOLBAR = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ list: 'bullet' }, { list: 'ordered' }]
 ];
-const QUILL_TOOLBAR_COMPACT = QUILL_TOOLBAR_FULL;
 
 function _initQuill(selector, opts = {}) {
-    const toolbar = opts.compact ? QUILL_TOOLBAR_COMPACT : QUILL_TOOLBAR_FULL;
     const quill = new Quill(selector, {
         theme: 'snow',
         placeholder: opts.placeholder || '',
         modules: {
-            toolbar: toolbar,
+            toolbar: QUILL_TOOLBAR,
             markdownShortcuts: true
         }
     });
@@ -4141,7 +4116,6 @@ const App = {
             if (!this._navigating) this.handleRoute();
         });
 
-        // Close dropdown on outside click
         $(document).on('click', e => {
             if (!$(e.target).closest('.dropdown').length) {
                 $('.dropdown-menu').removeClass('open');
@@ -5111,12 +5085,12 @@ const App = {
                 </div>
             `).join('') : '<p class="text-muted">No API tokens yet.</p>';
             this.openModal('My Account', `
-                <div class="settings-tabs">
-                    <button class="settings-tab active" onclick="App.switchAccountTab('general')">General</button>
-                    <button class="settings-tab" onclick="App.switchAccountTab('notifications')">Notifications</button>
-                    <button class="settings-tab" onclick="App.switchAccountTab('tokens')">API Tokens</button>
-                </div>
                 <form onsubmit="event.preventDefault();App.saveAccount()">
+                <div class="settings-tabs">
+                    <button type="button" class="settings-tab active" onclick="App.switchAccountTab('general')">General</button>
+                    <button type="button" class="settings-tab" onclick="App.switchAccountTab('notifications')">Notifications</button>
+                    <button type="button" class="settings-tab" onclick="App.switchAccountTab('tokens')">API Tokens</button>
+                </div>
                     <div id="atab-general" class="settings-tab-content">
                         <div class="form-group"><label>Name</label>
                             <input type="text" id="account-name" value="${this.esc(this.user.name)}">

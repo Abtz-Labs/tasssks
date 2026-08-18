@@ -1152,8 +1152,7 @@ assert_true(str_contains($html, '_initQuill('), 'Quill init helper defined');
 assert_true(str_contains($html, '_quillToMarkdown('), 'Quill-to-Markdown helper defined');
 assert_true(str_contains($html, 'new TurndownService('), 'TurndownService instantiated');
 assert_true(str_contains($html, 'DividerBlot'), 'Custom HR blot registered');
-assert_true(str_contains($html, 'QUILL_TOOLBAR_FULL'), 'Full toolbar config defined');
-assert_true(str_contains($html, 'QUILL_TOOLBAR_COMPACT'), 'Compact toolbar config defined');
+assert_true(str_contains($html, 'QUILL_TOOLBAR'), 'Toolbar config defined');
 
 // marked.js configured for target="_blank"
 assert_true(str_contains($html, 'target="_blank"') || str_contains($html, "target=\"_blank\""), 'marked.js link renderer adds target=_blank');
@@ -1443,6 +1442,32 @@ curl_close($ch);
 assert_eq(403, $code, 'index.php.bak blocked by security');
 
 @unlink($guestCookie);
+
+// ─── CODE QUALITY ────────────────────────────────────────
+section('Code Quality');
+
+$src = file_get_contents(__DIR__ . '/index.php');
+
+// Helper functions exist
+assert_true(str_contains($src, 'function setSetting('), 'setSetting helper defined');
+assert_true(str_contains($src, 'function rotateRecoveryKey('), 'rotateRecoveryKey helper defined');
+assert_true(str_contains($src, 'function formatEventText('), 'formatEventText helper defined');
+
+// Helpers are actually used (not dead code)
+assert_true(substr_count($src, 'setSetting(') >= 3, 'setSetting used in multiple places');
+assert_true(substr_count($src, 'rotateRecoveryKey(') >= 3, 'rotateRecoveryKey used in multiple places');
+assert_true(substr_count($src, 'formatEventText(') >= 3, 'formatEventText used in multiple places');
+
+// No leftover duplication of the patterns these helpers replaced
+$rawUpsertCount = preg_match_all('/INSERT INTO settings.*ON CONFLICT.*DO UPDATE/', $src);
+assert_eq(1, $rawUpsertCount, 'settings upsert only appears in setSetting helper');
+
+$rawRotateCount = preg_match_all('/UPDATE users SET recovery_key_hash/', $src);
+assert_eq(1, $rawRotateCount, 'recovery key update only appears in rotateRecoveryKey helper');
+
+// Dead code removed
+assert_true(!str_contains($src, 'QUILL_TOOLBAR_FULL'), 'QUILL_TOOLBAR_FULL removed (consolidated)');
+assert_true(!str_contains($src, 'QUILL_TOOLBAR_COMPACT'), 'QUILL_TOOLBAR_COMPACT removed (consolidated)');
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . str_repeat('=', 40) . "\n";
