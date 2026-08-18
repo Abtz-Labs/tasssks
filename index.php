@@ -2967,6 +2967,8 @@ body {
 
 .btn-ghost { background: transparent; color: var(--text-muted); border-color: var(--border); }
 .btn-ghost:hover { background: var(--surface-hover); color: var(--text); border-color: var(--border-strong); }
+.btn-outline-primary { background: transparent; color: var(--primary); border-color: var(--primary); }
+.btn-outline-primary:hover { background: var(--primary); color: #fff; }
 
 .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
 .btn-danger:hover { background: var(--danger); color: #fff; }
@@ -3503,7 +3505,12 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 
 /* Time report */
 .report-controls { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
-.report-periods, .report-group { display: flex; gap: 4px; align-items: center; }
+.report-periods, .report-group { display: flex; gap: 0; align-items: center; }
+.report-periods > .btn, .report-group > .btn { border-radius: 0; border-right: none; }
+.report-periods > .btn:first-of-type, .report-group > .btn:first-of-type { border-top-left-radius: var(--radius); border-bottom-left-radius: var(--radius); }
+.report-periods > .btn:last-child, .report-group > .btn:last-child { border-top-right-radius: var(--radius); border-bottom-right-radius: var(--radius); border-right: 1px solid var(--border); }
+.report-periods > .btn.btn-primary, .report-group > .btn.btn-primary { border-right: 1px solid transparent; }
+.report-group > span { margin-right: 8px; }
 .report-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
 .report-stat { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .report-stat strong { font-size: 22px; margin-bottom: 4px; }
@@ -3515,7 +3522,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 .token-input { font-family: monospace; font-size: 12px; flex: 1; }
 .btn-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); cursor: pointer; color: var(--text-muted); }
 .btn-icon:hover { background: var(--surface-hover); color: var(--text); }
-.btn-icon-danger { color: var(--danger); border-color: var(--danger); }
+.btn-icon-danger { color: var(--danger); border: none; font-size: 1.25rem; }
 .btn-icon-danger:hover { background: var(--danger); color: #fff; }
 
 /* Badge patterns */
@@ -5191,7 +5198,7 @@ const App = {
                     <tbody>${tableHtml || '<tr><td colspan="3" class="text-muted">No time entries for this period.</td></tr>'}</tbody>
                 </table>
             `;
-            const footer = `<a class="btn btn-ghost" href="?action=time_report&project_id=${pid}&from=${from}&to=${to}&format=csv" target="_blank">Export CSV</a>`;
+            const footer = `<a class="btn btn-outline-primary" href="?action=time_report&project_id=${pid}&from=${from}&to=${to}&format=csv" target="_blank">Export CSV</a>`;
             this.openModal('Time Report — ' + this.esc(this.currentProject.name), content, footer);
             $('.modal').addClass('modal-wide');
         });
@@ -5595,8 +5602,10 @@ const App = {
                                 <option value="slack">Slack</option>
                                 <option value="telegram">Telegram</option>
                             </select>
-                            <input type="text" id="webhook-url" placeholder="https://hooks.slack.com/..." class="flex-1 min-w-sm">
-                            <button class="btn btn-primary btn-sm" onclick="App.createWebhook()">Add</button>
+                            <div class="field-addons flex-1">
+                                <input type="text" id="webhook-url" placeholder="https://hooks.slack.com/...">
+                                <button class="btn btn-primary" onclick="App.createWebhook()">Add</button>
+                            </div>
                         </div>
                     </div>
                 </div>
