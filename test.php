@@ -812,7 +812,7 @@ assert_true(stripos($headResponse, 'SameSite=Strict') !== false, 'Session cookie
 // ─── SECURITY: SENSITIVE FILE ACCESS ────────────────────
 section('Sensitive File Blocking');
 
-$sensitiveFiles = ['tasssks.sqlite', 'test.sqlite', 'data.db', '.env', '.git/config'];
+$sensitiveFiles = ['tasssks.sqlite', 'test.sqlite', 'data.db', '.env', '.git/config', 'index.php.bak'];
 foreach ($sensitiveFiles as $f) {
     $ch = curl_init();
     curl_setopt_array($ch, [
@@ -1272,6 +1272,56 @@ assert_true($r['status'] === 401 || $r['status'] === 403, 'guest cannot create t
 $r = req('time_report', ['project_id' => $adminProjectId, 'format' => 'csv'], 'GET', '', $cookieFile);
 assert_eq(200, $r['status'], 'csv export returns 200');
 assert_true(str_contains($r['raw'], 'Card,Author,Minutes,Date,Note'), 'csv has header row');
+
+// ─── UPDATES ──────────────────────────────────────────────
+section('Updates');
+
+// auth_status returns version field
+$r = req('auth_status');
+assert_true(isset($r['body']['version']), 'auth_status returns version field');
+assert_eq('0.1.0', $r['body']['version'], 'version matches expected value');
+
+// auth_status returns update_available field
+assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');
+assert_eq(false, $r['body']['update_available'], 'update_available is false initially');
+
+// check_update requires admin (unauthenticated returns 403)
+$noAuthCookie = tempnam(sys_get_temp_dir(), 'kanban_noauth_');
+$r = req('check_update', [], 'GET', '', $noAuthCookie);
+assert_eq(403, $r['status'], 'check_update requires admin');
+@unlink($noAuthCookie);
+
+// check_update succeeds for admin (will fail to fetch from GitHub in test, but endpoint works)
+$r = req('check_update', [], 'GET', '', $cookieFile);
+assert_true(in_array($r['status'], [200, 502]), 'check_update returns 200 or 502 (network)');
+
+// GITHUB_RAW_URL defined in CONFIGURATION section (before API router)
+$source = file_get_contents(__DIR__ . '/index.php');
+$configPos = strpos($source, 'CONFIGURATION');
+$routerPos = strpos($source, 'API ROUTER');
+$constPos = strpos($source, "define('GITHUB_RAW_URL'");
+assert_true($configPos !== false, 'CONFIGURATION section exists');
+assert_true($routerPos !== false, 'API ROUTER section exists');
+assert_true($constPos !== false, 'GITHUB_RAW_URL constant defined');
+assert_true($constPos < $routerPos, 'GITHUB_RAW_URL defined before API router');
+
+// apply_update requires admin (unauthenticated returns 403)
+$noAuthCookie2 = tempnam(sys_get_temp_dir(), 'kanban_noauth_');
+$r = req('apply_update', [], 'POST', '', $noAuthCookie2);
+assert_eq(403, $r['status'], 'apply_update requires admin');
+@unlink($noAuthCookie2);
+
+// apply_update fails without prior check
+$r = req('apply_update', [], 'POST', $adminCsrf, $cookieFile);
+assert_eq(400, $r['status'], 'apply_update fails without prior check');
+
+// index.php.bak blocked by security
+$ch = curl_init("$BASE/index.php.bak");
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => false]);
+curl_exec($ch);
+$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+assert_eq(403, $code, 'index.php.bak blocked by security');
 
 @unlink($guestCookie);
 

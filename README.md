@@ -26,6 +26,7 @@ The entire application (backend logic, frontend markup, CSS, and JavaScript) liv
 - Webhook integrations (Slack, Telegram, generic JSON)
 - Email notifications via SMTP (immediate or daily digest)
 - Queue-based email delivery (non-blocking, cron-powered)
+- Built-in auto-update checker (admin only)
 
 ## Requirements
 
@@ -149,6 +150,7 @@ Tokens can be revoked at any time from the Account menu. The raw token is shown 
 - SMTP configuration and test
 - Cron token generation (for authenticating cron requests)
 - Global tag management
+- **Updates** — check for new versions and apply them with one click. The app automatically checks GitHub once a day. A backup (`index.php.bak`) is created before every update.
 
 ### Keyboard Shortcuts
 
@@ -197,7 +199,7 @@ A `.htaccess` file is included in the repository. It routes requests through `in
 ### Nginx
 
 ```nginx
-location ~ \.(sqlite|sqlite3|db|sql|env)$ {
+location ~ \.(sqlite|sqlite3|db|sql|env|bak)$ {
     deny all;
 }
 

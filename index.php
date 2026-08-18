@@ -12,7 +12,7 @@
 if (php_sapi_name() === 'cli-server') {
     $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     if ($uri !== '/' && $uri !== '' && file_exists(__DIR__ . $uri)) {
-        if (preg_match('/\.(sqlite|sqlite3|db|sql|env|htaccess|htpasswd)$/i', $uri)
+        if (preg_match('/\.(sqlite|sqlite3|db|sql|env|htaccess|htpasswd|bak)$/i', $uri)
             || str_contains($uri, '/.git')
         ) {
             http_response_code(403);
@@ -32,6 +32,7 @@ define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', 10 * 1024 * 1024); // 10MB
 define('IMAGE_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
+define('GITHUB_RAW_URL', 'https://raw.githubusercontent.com/rogeriotaques/tasssks/main/index.php');
 
 // ============================================================================
 // DATABASE SETUP
@@ -293,7 +294,7 @@ function migrateDatabase(PDO $db): void {
 // Block direct access to sensitive files
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $requestPath = strtolower(parse_url($requestUri, PHP_URL_PATH));
-if (preg_match('/\.(sqlite|sqlite3|db|sql)$/i', $requestPath)
+if (preg_match('/\.(sqlite|sqlite3|db|sql|bak)$/i', $requestPath)
     || preg_match('/\.(env|git|htaccess|htpasswd)$/i', $requestPath)
     || str_contains($requestPath, '/.git/')
 ) {
@@ -649,6 +650,10 @@ if ($action) {
         'delete_time_entry' => apiDeleteTimeEntry(),
         'time_report' => apiTimeReport(),
 
+        // Updates
+        'check_update' => apiCheckUpdate(),
+        'apply_update' => apiApplyUpdate(),
+
         default => jsonResponse(['error' => 'Unknown action'], 404),
     };
     exit;
@@ -663,12 +668,26 @@ function apiAuthStatus(): void {
     $appNameRow = $db->query("SELECT value FROM settings WHERE key = 'app_name'")->fetch();
     $user = getCurrentUser();
 
+    // Check for updates: clear flag if local version already matches latest
+    $updateAvailable = false;
+    $latestVersionRow = $db->query("SELECT value FROM settings WHERE key = 'latest_version'")->fetch();
+    if ($latestVersionRow && $latestVersionRow['value']) {
+        if (version_compare(APP_VERSION, $latestVersionRow['value'], '>=')) {
+            $db->exec("DELETE FROM settings WHERE key = 'update_available'");
+        } else {
+            $flag = $db->query("SELECT value FROM settings WHERE key = 'update_available'")->fetch();
+            $updateAvailable = $flag && $flag['value'] === '1';
+        }
+    }
+
     jsonResponse([
         'needs_setup' => needsSetup(),
         'authenticated' => $user !== null,
         'user' => $user,
         'app_name' => ($appNameRow && $appNameRow['value']) ? $appNameRow['value'] : APP_NAME,
         'csrf_token' => $_SESSION['csrf_token'] ?? '',
+        'version' => APP_VERSION,
+        'update_available' => $updateAvailable,
     ]);
 }
 
@@ -2574,6 +2593,113 @@ function apiTimeReport(): void {
 }
 
 // ============================================================================
+// API: UPDATES
+// ============================================================================
+
+function apiCheckUpdate(): void {
+    requireAdmin();
+    $db = getDb();
+
+    // Return cached result if checked within 24h
+    $lastCheck = $db->query("SELECT value FROM settings WHERE key = 'last_update_check_at'")->fetch();
+    if ($lastCheck && $lastCheck['value']) {
+        $lastTime = strtotime($lastCheck['value']);
+        if ($lastTime && (time() - $lastTime) < 86400) {
+            $latest = $db->query("SELECT value FROM settings WHERE key = 'latest_version'")->fetch();
+            $flag = $db->query("SELECT value FROM settings WHERE key = 'update_available'")->fetch();
+            jsonResponse([
+                'update_available' => $flag && $flag['value'] === '1',
+                'latest_version' => $latest ? $latest['value'] : APP_VERSION,
+                'current_version' => APP_VERSION,
+                'last_checked' => $lastCheck['value'],
+            ]);
+        }
+    }
+
+    // Fetch from GitHub
+    $ctx = stream_context_create(['http' => [
+        'method' => 'GET',
+        'header' => "User-Agent: Tasssks/" . APP_VERSION . "\r\n",
+        'timeout' => 10,
+        'ignore_errors' => true,
+    ]]);
+    $content = @file_get_contents(GITHUB_RAW_URL, false, $ctx);
+    if ($content === false) {
+        jsonResponse(['error' => 'Failed to fetch update info'], 502);
+    }
+
+    // Parse version
+    if (!preg_match("/define\('APP_VERSION',\s*'([^']+)'\)/", $content, $m)) {
+        jsonResponse(['error' => 'Invalid remote version format'], 502);
+    }
+    $latestVersion = $m[1];
+    $available = version_compare(APP_VERSION, $latestVersion, '<');
+
+    // Cache result
+    $now = date('c');
+    $db->prepare("INSERT INTO settings (key, value) VALUES ('latest_version', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
+        ->execute([$latestVersion, $latestVersion]);
+    $db->prepare("INSERT INTO settings (key, value) VALUES ('update_available', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
+        ->execute([$available ? '1' : '0', $available ? '1' : '0']);
+    $db->prepare("INSERT INTO settings (key, value) VALUES ('last_update_check_at', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
+        ->execute([$now, $now]);
+    // Cache the full content for apply_update
+    $db->prepare("INSERT INTO settings (key, value) VALUES ('latest_content', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
+        ->execute([$content, $content]);
+
+    jsonResponse([
+        'update_available' => $available,
+        'latest_version' => $latestVersion,
+        'current_version' => APP_VERSION,
+        'last_checked' => $now,
+    ]);
+}
+
+function apiApplyUpdate(): void {
+    requireAdmin();
+    $db = getDb();
+
+    // Read cached content
+    $contentRow = $db->query("SELECT value FROM settings WHERE key = 'latest_content'")->fetch();
+    if (!$contentRow || !$contentRow['value']) {
+        jsonResponse(['error' => 'No update cached. Run check_update first.'], 400);
+    }
+    $content = $contentRow['value'];
+
+    // Sanity check
+    if (!preg_match("/define\('APP_VERSION',\s*'([^']+)'\)/", $content, $m) || empty($m[1])) {
+        jsonResponse(['error' => 'Cached content is invalid'], 400);
+    }
+    $newVersion = $m[1];
+    if ($newVersion === APP_VERSION) {
+        jsonResponse(['error' => 'Already up to date'], 400);
+    }
+
+    // Backup current file
+    $bakPath = __DIR__ . '/index.php.bak';
+    if (!copy(__DIR__ . '/index.php', $bakPath)) {
+        jsonResponse(['error' => 'Failed to create backup'], 500);
+    }
+
+    // Write new content
+    $previousVersion = APP_VERSION;
+    if (file_put_contents(__DIR__ . '/index.php', $content) === false) {
+        // Restore from backup
+        @copy($bakPath, __DIR__ . '/index.php');
+        jsonResponse(['error' => 'Failed to write update. Restored from backup.'], 500);
+    }
+
+    // Clear update state
+    $db->exec("DELETE FROM settings WHERE key IN ('update_available', 'latest_content')");
+
+    jsonResponse([
+        'ok' => true,
+        'previous_version' => $previousVersion,
+        'new_version' => $newVersion,
+    ]);
+}
+
+// ============================================================================
 // SMTP SENDER
 // ============================================================================
 
@@ -3932,12 +4058,25 @@ const App = {
             this.api('auth_status').done(status => {
                 this.appName = status.app_name || '<?= APP_NAME ?>';
                 this.updateBrand();
+                this.appVersion = status.version || '<?= APP_VERSION ?>';
+                this.updateAvailable = status.update_available || false;
                 if (status.needs_setup) {
                     $('#view-setup').removeClass('hidden');
                     setTimeout(() => $('#setup-name').focus(), 100);
                 } else if (status.authenticated) {
                     this.user = status.user;
                     this.handleRoute();
+                    // Auto-check for updates (fire-and-forget, admin only)
+                    if (this.user.role === 'admin') {
+                        setTimeout(() => {
+                            this.api('check_update').done(res => {
+                                this.updateAvailable = res.update_available;
+                                this.appVersion = res.current_version;
+                                this._updateSettingsBadge();
+                                this._showUpdateToast();
+                            });
+                        }, 2000);
+                    }
                 } else {
                     this._loginRedirect = window.location.hash || '';
                     $('#login-brand').text(this.appName);
@@ -4046,6 +4185,8 @@ const App = {
             }
             this.api('auth_status').done(status => {
                 this.user = status.user;
+                this.appVersion = status.version || this.appVersion;
+                this.updateAvailable = status.update_available || false;
                 this.handleRoute();
             });
         }).fail((xhr) => {
@@ -4188,7 +4329,7 @@ const App = {
                     </button>` : ''}
                     ${isAdmin ? `<button class="dropdown-item" onclick="App.showAppSettings();$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                        Settings
+                        Settings${this.updateAvailable ? ' <span style="display:inline-block;width:7px;height:7px;background:var(--primary);border-radius:50%;vertical-align:middle;margin-left:4px"></span>' : ''}
                     </button>` : ''}
                     <div class="dropdown-divider"></div>
                     <button class="dropdown-item" onclick="App.toggleTheme();$('.dropdown-menu').removeClass('open')">
@@ -5191,6 +5332,7 @@ const App = {
                     <button class="settings-tab active" onclick="App.switchSettingsTab('general')">General</button>
                     <button class="settings-tab" onclick="App.switchSettingsTab('smtp')">SMTP</button>
                     <button class="settings-tab" onclick="App.switchSettingsTab('cron')">Cron</button>
+                    <button class="settings-tab" onclick="App.switchSettingsTab('updates')">Updates</button>
                 </div>
                 <div id="tab-general" class="settings-tab-content">
                     <div class="card-detail-section"><h4>App Name</h4>
@@ -5247,13 +5389,25 @@ const App = {
                         ${smtp.last_digest_at ? `<p class="text-xs text-light mt-2">Last digest run: <strong>${smtp.last_digest_at}</strong></p>` : '<p class="text-xs text-light mt-2">Digest has not run yet.</p>'}
                     </div>
                 </div>
+                <div id="tab-updates" class="settings-tab-content hidden">
+                    <div class="card-detail-section"><h4>Updates</h4>
+                        <p class="text-sm mb-2">Current version: <strong>#${status.version || '<?= APP_VERSION ?>'}</strong></p>
+                        <div id="update-info">
+                            <p class="text-sm text-light">Click "Check now" to see if a newer version is available.</p>
+                        </div>
+                        <div class="flex-center gap-2 mt-2">
+                            <button class="btn btn-ghost" onclick="App.checkUpdate()">Check now</button>
+                            <button class="btn btn-primary hidden" id="apply-update-btn" onclick="App.applyUpdate()">Apply update</button>
+                        </div>
+                    </div>
+                </div>
             `, '');
             setTimeout(() => $('#app-name').focus(), 50);
         });
     },
 
     switchSettingsTab(tab) {
-        const tabs = ['general', 'smtp', 'cron'];
+        const tabs = ['general', 'smtp', 'cron', 'updates'];
         const idx = tabs.indexOf(tab);
         $('.settings-tab').removeClass('active').eq(idx).addClass('active');
         $('.settings-tab-content').addClass('hidden');
@@ -5303,6 +5457,65 @@ const App = {
             this.updateBrand();
             this.showAppSettings();
         });
+    },
+
+    checkUpdate() {
+        const $info = $('#update-info');
+        $info.html('<p class="text-sm text-light">Checking...</p>');
+        $('#apply-update-btn').addClass('hidden');
+        this.api('check_update').done((res) => {
+            if (res.update_available) {
+                $info.html(`<p class="text-sm">A new version is available: <strong>#${res.latest_version}</strong></p>
+                    <p class="text-xs text-light mt-1">Last checked: ${res.last_checked}</p>`);
+                $('#apply-update-btn').removeClass('hidden');
+            } else {
+                $info.html(`<p class="text-sm">You are up to date (<strong>#${res.current_version}</strong>)</p>
+                    <p class="text-xs text-light mt-1">Last checked: ${res.last_checked}</p>`);
+            }
+            this.updateAvailable = res.update_available;
+            this._updateSettingsBadge();
+        }).fail(() => {
+            $info.html('<p class="text-sm" style="color:var(--danger)">Failed to check for updates.</p>');
+        });
+    },
+
+    applyUpdate() {
+        if (!confirm('This will replace index.php with the latest version. A backup will be created. Continue?')) return;
+        const $btn = $('#apply-update-btn');
+        $btn.prop('disabled', true).text('Updating...');
+        this.api('apply_update', {}, 'POST').done((res) => {
+            $('#update-info').html(`<p class="text-sm" style="color:var(--success)">Updated from #${res.previous_version} to #${res.new_version}. Reload to use the new version.</p>`);
+            $btn.addClass('hidden');
+            this.updateAvailable = false;
+            this._updateSettingsBadge();
+            setTimeout(() => { if (confirm('Reload now?')) location.reload(); }, 1500);
+        }).fail((xhr) => {
+            const msg = xhr.responseJSON?.error || 'Update failed';
+            $('#update-info').html(`<p class="text-sm" style="color:var(--danger)">${msg}</p>`);
+            $btn.prop('disabled', false).text('Apply update');
+        });
+    },
+
+    _updateSettingsBadge() {
+        // Re-render user menu to reflect badge change
+        if (!this.isGuest && this.user) {
+            const $actions = $('#navbar-actions');
+            if ($actions.find('.dropdown').length) {
+                $actions.html(this.renderUserMenu());
+            }
+        }
+    },
+
+    _showUpdateToast() {
+        if (!this.updateAvailable || this.isGuest || this.user?.role !== 'admin') return;
+        if (sessionStorage.getItem('update_toast_dismissed')) return;
+        const $toast = $(`<div id="update-toast" style="position:fixed;bottom:20px;right:20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;box-shadow:var(--shadow-lg);z-index:10000;display:flex;align-items:center;gap:10px;max-width:360px;font-size:13px">
+            <span style="flex:1">A new version of Tasssks is available (<strong>#${this.appVersion}</strong> → latest).</span>
+            <button class="btn btn-ghost btn-sm" onclick="App.showAppSettings();$('#update-toast').remove()">Update</button>
+            <button class="btn btn-ghost btn-sm" onclick="sessionStorage.setItem('update_toast_dismissed','1');$('#update-toast').remove()" style="font-size:16px;line-height:1;padding:0 4px">&times;</button>
+        </div>`);
+        $('body').append($toast);
+        setTimeout(() => $toast.fadeOut(300, () => $toast.remove()), 10000);
     },
 
     // PROJECT SETTINGS (owner/admin only)
