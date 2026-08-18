@@ -1547,13 +1547,23 @@ function apiToggleCardTag(): void {
 
     if (!$cardId || !$tagId) jsonResponse(['error' => 'Missing fields'], 400);
 
-    requireAuth();
-
     $db = getDb();
     $card = $db->prepare("SELECT col.project_id FROM cards c JOIN columns_ col ON c.column_id = col.id WHERE c.id = ?");
     $card->execute([$cardId]);
     $row = $card->fetch();
     if (!$row) jsonResponse(['error' => 'Not found'], 404);
+
+    if (!isAuthenticated()) {
+        $projectId = $row['project_id'];
+        if (!isGuest($projectId)) {
+            jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+        $project = $db->prepare("SELECT guest_can_create_cards FROM projects WHERE id = ?");
+        $project->execute([$projectId]);
+        if (!(int) $project->fetch()['guest_can_create_cards']) {
+            jsonResponse(['error' => 'Guests cannot manage tags'], 403);
+        }
+    }
 
     $existing = $db->prepare("SELECT 1 FROM card_tags WHERE card_id = ? AND tag_id = ?");
     $existing->execute([$cardId, $tagId]);
@@ -4643,7 +4653,7 @@ const App = {
             </div>
             <div class="card-detail-section card-detail-tags">
                 ${tagsHtml}
-                ${!this.isGuest ? `<span class="tag tag-add" onclick="App.showTagPicker(${cardId})">+</span>` : ''}
+                ${!this.isGuest || this.currentProject.guest_can_create_cards ? `<span class="tag tag-add" onclick="App.showTagPicker(${cardId})">+</span>` : ''}
             </div>
             <div class="card-detail-section">
                 <h4>Description ${!this.isGuest ? `<button class="btn btn-ghost btn-sm btn-edit-inline" onclick="App.editCardDescription(${cardId})">Edit</button>` : ''}</h4>
@@ -4761,14 +4771,14 @@ const App = {
         this.openModal('Tags', `
             ${assigned.length ? `<div class="card-detail-section"><h4>Assigned</h4><div class="card-tags">${assignedHtml}</div></div>` : ''}
             ${available.length ? `<div class="card-detail-section"><h4>Available</h4><div class="card-tags">${availableHtml}</div></div>` : ''}
-            <div class="card-detail-section"><h4>Create New Tag</h4>
+            ${!this.isGuest ? `<div class="card-detail-section"><h4>Create New Tag</h4>
                 <div class="tag-picker">
                     <input type="text" id="new-tag-name" placeholder="Tag name" class="tag-input">
                     ${colors.map(c => `<span class="tag-color-dot" style="background:${c}" onclick="App.selectTagColor(this,'${c}')"></span>`).join('')}
                     <input type="hidden" id="new-tag-color" value="${colors[0]}">
                     <button class="btn btn-primary btn-sm btn-shrink-0" onclick="App.createTag()">Add</button>
                 </div>
-            </div>
+            </div>` : ''}
         `, '');
         this._pendingTagCardId = cardId;
     },
