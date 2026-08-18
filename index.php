@@ -284,7 +284,15 @@ function migrateDatabase(PDO $db): void {
         }
     }
 
-    $db->exec('PRAGMA user_version = 3');
+    // Version 3 → 4: Recovery keys
+    if ($version < 4) {
+        $cols = array_column($db->query("PRAGMA table_info(users)")->fetchAll(), 'name');
+        if (!in_array('recovery_key_hash', $cols)) {
+            $db->exec("ALTER TABLE users ADD COLUMN recovery_key_hash TEXT");
+        }
+    }
+
+    $db->exec('PRAGMA user_version = 4');
 }
 
 // ============================================================================
@@ -557,6 +565,7 @@ if ($action) {
 
         // Account
         'account_update' => apiAccountUpdate(),
+        'regenerate_recovery_key' => apiRegenerateRecoveryKey(),
         'list_api_tokens' => apiListApiTokens(),
         'create_api_token' => apiCreateApiToken(),
         'revoke_api_token' => apiRevokeApiToken(),
@@ -717,11 +726,14 @@ function apiAuthSetup(): void {
     $stmt->execute([$name, $email, $hash]);
     $userId = (int) $db->lastInsertId();
 
+    $recoveryKey = bin2hex(random_bytes(16));
+    $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $recoveryKey), $userId]);
+
     session_regenerate_id(true);
     $_SESSION['user_id'] = $userId;
     $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
 
-    jsonResponse(['ok' => true, 'csrf_token' => $_SESSION['csrf_token']]);
+    jsonResponse(['ok' => true, 'csrf_token' => $_SESSION['csrf_token'], 'recovery_key' => $recoveryKey]);
 }
 
 function getClientIp(): string {
@@ -765,28 +777,67 @@ function apiAuthLogin(): void {
     $input = getInput();
     $email = trim(strtolower($input['email'] ?? ''));
     $password = $input['password'] ?? '';
+    $recoveryKey = $input['recovery_key'] ?? '';
 
-    if (!$email || !$password) {
+    if (!$email || (!$password && !$recoveryKey)) {
         jsonResponse(['error' => 'Email and password are required'], 400);
     }
 
     checkRateLimit();
 
     $db = getDb();
-    $stmt = $db->prepare("SELECT id, password_hash FROM users WHERE email = ?");
+    $stmt = $db->prepare("SELECT id, password_hash, recovery_key_hash FROM users WHERE email = ?");
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
-    if (!$user || !password_verify($password, $user['password_hash'])) {
+    if (!$user) {
         recordFailedAttempt();
         jsonResponse(['error' => 'Invalid email or password'], 403);
+    }
+
+    $response = ['ok' => true];
+    $passwordResetRequired = false;
+
+    if ($recoveryKey) {
+        $inputHash = hash('sha256', str_replace('-', '', strtolower(trim($recoveryKey))));
+        if (!$user['recovery_key_hash'] || !hash_equals($user['recovery_key_hash'], $inputHash)) {
+            recordFailedAttempt();
+            jsonResponse(['error' => 'Invalid recovery key'], 403);
+        }
+        $newKey = bin2hex(random_bytes(16));
+        $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $newKey), $user['id']]);
+        $response['recovery_key'] = $newKey;
+        $passwordResetRequired = true;
+    } else {
+        if (!password_verify($password, $user['password_hash'])) {
+            $candidateHash = hash('sha256', str_replace('-', '', strtolower(trim($password))));
+            if ($user['recovery_key_hash'] && hash_equals($user['recovery_key_hash'], $candidateHash)) {
+                $newKey = bin2hex(random_bytes(16));
+                $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $newKey), $user['id']]);
+                $response['recovery_key'] = $newKey;
+                $passwordResetRequired = true;
+            } else {
+                recordFailedAttempt();
+                jsonResponse(['error' => 'Invalid email or password'], 403);
+            }
+        } elseif (!$user['recovery_key_hash']) {
+            $newKey = bin2hex(random_bytes(16));
+            $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $newKey), $user['id']]);
+            $response['recovery_key'] = $newKey;
+            $passwordResetRequired = true;
+        }
     }
 
     clearAttempts();
     session_regenerate_id(true);
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
-    jsonResponse(['ok' => true, 'csrf_token' => $_SESSION['csrf_token']]);
+    if ($passwordResetRequired) {
+        $_SESSION['password_reset_required'] = true;
+        $response['password_reset'] = true;
+    }
+    $response['csrf_token'] = $_SESSION['csrf_token'];
+    jsonResponse($response);
 }
 
 function apiAuthLogout(): void {
@@ -833,19 +884,24 @@ function apiAccountUpdate(): void {
         jsonResponse(['error' => 'Email already in use'], 400);
     }
 
-    // If changing password, verify current password
+    // If changing password, verify current password (unless recovery-key login without current_password)
     if ($password) {
         if (strlen($password) < 6) {
             jsonResponse(['error' => 'New password must be at least 6 characters'], 400);
         }
-        $stmt = $db->prepare("SELECT password_hash FROM users WHERE id = ?");
-        $stmt->execute([$user['id']]);
-        $row = $stmt->fetch();
-        if (!password_verify($currentPassword, $row['password_hash'])) {
-            jsonResponse(['error' => 'Current password is incorrect'], 403);
+        if (!$currentPassword && !empty($_SESSION['password_reset_required'])) {
+            // Recovery-key login: allow password change without current password
+        } else {
+            $stmt = $db->prepare("SELECT password_hash FROM users WHERE id = ?");
+            $stmt->execute([$user['id']]);
+            $row = $stmt->fetch();
+            if (!password_verify($currentPassword, $row['password_hash'])) {
+                jsonResponse(['error' => 'Current password is incorrect'], 403);
+            }
         }
         $hash = password_hash($password, PASSWORD_BCRYPT);
         $db->prepare("UPDATE users SET name = ?, email = ?, password_hash = ? WHERE id = ?")->execute([$name, $email, $hash, $user['id']]);
+        unset($_SESSION['password_reset_required']);
         $projects = $db->prepare("SELECT project_id FROM project_owners WHERE user_id = ?");
         $projects->execute([$user['id']]);
         foreach ($projects->fetchAll() as $p) {
@@ -856,6 +912,31 @@ function apiAccountUpdate(): void {
     }
 
     jsonResponse(['ok' => true]);
+}
+
+function apiRegenerateRecoveryKey(): void {
+    requireAuth();
+    $user = getCurrentUser();
+    $input = getInput();
+    $password = $input['password'] ?? '';
+
+    if (!$password) {
+        jsonResponse(['error' => 'Password is required'], 400);
+    }
+
+    $db = getDb();
+    $stmt = $db->prepare("SELECT password_hash FROM users WHERE id = ?");
+    $stmt->execute([$user['id']]);
+    $row = $stmt->fetch();
+
+    if (!password_verify($password, $row['password_hash'])) {
+        jsonResponse(['error' => 'Invalid password'], 403);
+    }
+
+    $newKey = bin2hex(random_bytes(16));
+    $db->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")->execute([hash('sha256', $newKey), $user['id']]);
+
+    jsonResponse(['ok' => true, 'recovery_key' => $newKey]);
 }
 
 // ============================================================================
@@ -2972,6 +3053,7 @@ body {
     white-space: nowrap;
 }
 
+.btn:disabled, .btn[disabled] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-hover); }
 
@@ -3534,6 +3616,14 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 .btn-icon:hover { background: var(--surface-hover); color: var(--text); }
 .btn-icon-danger { color: var(--danger); border: none; font-size: 1.25rem; }
 .btn-icon-danger:hover { background: var(--danger); color: #fff; }
+.recovery-key-display { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-hover); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin: 8px 0; }
+.recovery-key-display code { font-family: monospace; font-size: 15px; letter-spacing: 0.08em; user-select: all; color: var(--text); }
+.recovery-key-confirm { display: flex; align-items: center; gap: 6px; justify-content: center; font-size: 14px; cursor: pointer; }
+.recovery-key-confirm input { cursor: pointer; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: var(--radius); font-size: 14px; z-index: 10001; box-shadow: var(--shadow-lg); animation: toast-in 0.2s ease; }
+.toast-error { background: var(--danger); color: #fff; }
+.toast-success { background: var(--success, #22c55e); color: #fff; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 
 /* Badge patterns */
 .badge-admin {
@@ -3854,7 +3944,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
                 <input type="text" id="login-email" placeholder="Email" autocomplete="email">
             </div>
             <div class="form-group">
-                <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+                <input type="password" id="login-password" placeholder="Password or recovery key" autocomplete="current-password">
             </div>
             <button type="submit" class="btn btn-primary w-full">Sign In</button>
         </form>
@@ -4178,6 +4268,9 @@ const App = {
             $('#view-setup').addClass('hidden');
             this.user = { name, email, role: 'admin' };
             this.handleRoute();
+            if (res.recovery_key) {
+                this._showRecoveryKeyModal(res.recovery_key);
+            }
         }).fail((xhr) => {
             const msg = xhr.responseJSON?.error || 'Setup failed';
             $('#setup-error').text(msg).removeClass('hidden');
@@ -4205,11 +4298,101 @@ const App = {
                 this.appVersion = status.version || this.appVersion;
                 this.updateAvailable = status.update_available || false;
                 this.handleRoute();
+                if (res.recovery_key) {
+                    this._showRecoveryKeyModal(res.recovery_key, res.password_reset);
+                }
             });
         }).fail((xhr) => {
             const msg = xhr.responseJSON?.error || 'Login failed';
             $('#login-error').text(msg).removeClass('hidden');
             $('#login-password').val('').focus();
+        });
+    },
+
+    _formatRecoveryKey(key) {
+        return key.replace(/(.{4})/g, '$1-').slice(0, -1).toUpperCase();
+    },
+
+    _showRecoveryKeyModal(key, passwordReset) {
+        const formatted = this._formatRecoveryKey(key);
+        const pwField = passwordReset ? `
+                <div class="form-group mt-4 text-left">
+                    <label><strong>Set a new password</strong></label>
+                    <input type="password" id="rk-new-password" placeholder="Min. 6 characters" autocomplete="new-password">
+                </div>` : '';
+        const checkHandler = passwordReset
+            ? `App._validateRkModal()`
+            : `$('#rk-dismiss-btn').prop('disabled',!this.checked)`;
+        const doneHandler = passwordReset ? `App._submitRkPassword()` : `App.closeModal()`;
+        this.openModal('Recovery Key', `
+            <div class="text-center">
+                <p class="text-base mb-4"><strong>Save this recovery key in a secure place.</strong><br>You can use it to log in if you forget your password.</p>
+                <div class="recovery-key-display">
+                    <code id="recovery-key-value">${formatted}</code>
+                    <button type="button" class="btn btn-sm btn-icon ml-2" onclick="App._copyRecoveryKey()" title="Copy">
+                        <svg id="rk-copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <svg id="rk-check-icon" class="hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                </div>
+                <p class="text-danger text-sm mt-4">This key will not be shown again.</p>${pwField}
+                <label class="recovery-key-confirm mt-4"><input type="checkbox" id="rk-saved-check" onchange="${checkHandler}"> I have saved this key</label>
+            </div>
+        `, `<button class="btn btn-primary" id="rk-dismiss-btn" disabled onclick="${doneHandler}">Done</button>`);
+        if (passwordReset) {
+            setTimeout(() => $('#rk-new-password').on('input', () => this._validateRkModal()), 50);
+        }
+    },
+
+    _validateRkModal() {
+        const checked = $('#rk-saved-check').is(':checked');
+        const pw = $('#rk-new-password').val();
+        const valid = checked && pw && pw.length >= 6;
+        $('#rk-dismiss-btn').prop('disabled', !valid);
+    },
+
+    _submitRkPassword() {
+        const pw = $('#rk-new-password').val();
+        if (!pw || pw.length < 6) {
+            this.toast('Password must be at least 6 characters.');
+            return;
+        }
+        this.api('account_update', { name: this.user.name, email: this.user.email, password: pw }, 'POST').done(() => {
+            this.closeModal();
+            this.toast('Password updated.', 'success');
+        }).fail(xhr => {
+            this.toast(xhr.responseJSON?.error || 'Failed');
+        });
+    },
+
+    _copyRecoveryKey() {
+        const text = $('#recovery-key-value').text();
+        navigator.clipboard.writeText(text).then(() => {
+            $('#rk-copy-icon').addClass('hidden');
+            $('#rk-check-icon').removeClass('hidden');
+            setTimeout(() => { $('#rk-check-icon').addClass('hidden'); $('#rk-copy-icon').removeClass('hidden'); }, 2000);
+        });
+    },
+
+    regenerateRecoveryKey() {
+        this.openModal('Regenerate Recovery Key', `
+            <p class="text-base mb-4">Enter your current password to generate a new recovery key. The old key will stop working immediately.</p>
+            <div class="form-group"><label>Password</label>
+                <input type="password" id="regen-rk-password" autocomplete="current-password">
+            </div>
+        `, `
+            <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
+            <button class="btn btn-primary" id="regen-rk-btn" onclick="App._doRegenerateRecoveryKey()">Regenerate</button>
+        `);
+        setTimeout(() => $('#regen-rk-password').focus(), 50);
+    },
+
+    _doRegenerateRecoveryKey() {
+        const password = $('#regen-rk-password').val();
+        if (!password) { $('#regen-rk-password').focus(); return; }
+        this.api('regenerate_recovery_key', { password }, 'POST').done(res => {
+            this._showRecoveryKeyModal(res.recovery_key);
+        }).fail(xhr => {
+            this.toast(xhr.responseJSON?.error || 'Failed');
         });
     },
 
@@ -4949,6 +5132,10 @@ const App = {
                                 <input type="password" id="account-new-pw" placeholder="Leave blank to keep current" autocomplete="new-password">
                             </div>
                         </div>
+                        <div class="card-detail-section mt-4"><h4>Recovery Key</h4>
+                            <p class="text-sm text-light mb-2">Generate a new recovery key (invalidates the current one).</p>
+                            <button type="button" class="btn btn-sm" onclick="App.regenerateRecoveryKey()">Regenerate Recovery Key</button>
+                        </div>
                     </div>
                     <div id="atab-notifications" class="settings-tab-content hidden">
                         <div class="card-detail-section"><h4>Notification Preferences</h4>
@@ -4983,8 +5170,6 @@ const App = {
                             <div id="api-tokens-list">${tokenRows}</div>
                         </div>
                     </div>
-                    <p id="account-error" class="hidden text-danger text-base mb-3"></p>
-                    <p id="account-success" class="hidden text-success text-base mb-3">Saved!</p>
                 </form>
             `, `<button class="btn btn-primary" onclick="App.saveAccount()">Save</button>`);
             setTimeout(() => $('#account-name').focus(), 50);
@@ -4998,11 +5183,11 @@ const App = {
         const currentPassword = $('#account-current-pw').val();
 
         if (!name || !email) {
-            $('#account-error').text('Name and email are required.').removeClass('hidden');
+            this.toast('Name and email are required.');
             return;
         }
         if (password && !currentPassword) {
-            $('#account-error').text('Current password is required to set a new one.').removeClass('hidden');
+            this.toast('Current password is required to set a new one.');
             return;
         }
 
@@ -5019,12 +5204,9 @@ const App = {
             this.user.name = name;
             this.user.email = email;
             this.api('update_notification_settings', { email: notifEmail, delivery: notifDelivery }, 'POST');
-            $('#account-error').addClass('hidden');
-            $('#account-success').removeClass('hidden');
-            setTimeout(() => $('#account-success').addClass('hidden'), 2000);
+            this.toast('Saved!', 'success');
         }).fail(xhr => {
-            const msg = xhr.responseJSON?.error || 'Failed to update';
-            $('#account-error').text(msg).removeClass('hidden');
+            this.toast(xhr.responseJSON?.error || 'Failed to update');
         });
     },
 
@@ -5046,7 +5228,7 @@ const App = {
             $('#new-token-display').removeClass('hidden');
             this._refreshTokenList();
         }).fail(xhr => {
-            alert(xhr.responseJSON?.error || 'Failed to create token');
+            this.toast(xhr.responseJSON?.error || 'Failed to create token');
         });
     },
 
@@ -5266,7 +5448,6 @@ const App = {
                         <div class="form-group"><label>Role</label>
                             <select id="team-add-role"><option value="member">Member</option><option value="admin">Admin</option></select>
                         </div>
-                        <p id="team-error" class="hidden text-danger text-base mb-3"></p>
                         <button class="btn btn-primary" onclick="App.teamAdd()">Add Member</button>
                     </div>
                 </div>
@@ -5280,14 +5461,14 @@ const App = {
         const password = $('#team-add-pw').val();
         const role = $('#team-add-role').val();
         if (!name || !email || !password) {
-            $('#team-error').text('All fields are required.').removeClass('hidden');
+            this.toast('All fields are required.');
             return;
         }
         this.api('team_add', { name, email, password, role }, 'POST').done(() => {
             this.showTeam();
+            this.toast('Member added.', 'success');
         }).fail(xhr => {
-            const msg = xhr.responseJSON?.error || 'Failed to add member';
-            $('#team-error').text(msg).removeClass('hidden');
+            this.toast(xhr.responseJSON?.error || 'Failed to add member');
         });
     },
 
@@ -5315,7 +5496,6 @@ const App = {
             <div class="form-group"><label>New Password</label>
                 <input type="password" id="team-reset-pw" placeholder="New password (min 6 chars)" autocomplete="new-password">
             </div>
-            <p id="team-reset-error" class="hidden text-danger text-base mb-3"></p>
         `, `
             <button class="btn btn-ghost" onclick="App.showTeam()">Cancel</button>
             <button class="btn btn-primary" onclick="App.teamDoResetPw(${id})">Reset</button>
@@ -5326,11 +5506,13 @@ const App = {
     teamDoResetPw(id) {
         const pw = $('#team-reset-pw').val();
         if (!pw || pw.length < 6) {
-            $('#team-reset-error').text('Password must be at least 6 characters.').removeClass('hidden');
+            this.toast('Password must be at least 6 characters.');
             return;
         }
-        this.api('team_reset_password', { id, password: pw }, 'POST').done(() => this.showTeam())
-            .fail(xhr => { $('#team-reset-error').text(xhr.responseJSON?.error || 'Failed').removeClass('hidden'); });
+        this.api('team_reset_password', { id, password: pw }, 'POST').done(() => {
+            this.showTeam();
+            this.toast('Password reset.', 'success');
+        }).fail(xhr => { this.toast(xhr.responseJSON?.error || 'Failed'); });
     },
 
     // APP SETTINGS (admin only)
@@ -5392,7 +5574,6 @@ const App = {
                             <button class="btn btn-primary" onclick="App.saveSmtp()">Save SMTP</button>
                             <button class="btn btn-ghost" onclick="App.testSmtp()">Send Test Email</button>
                         </div>
-                        <p id="smtp-msg" class="hidden text-sm mt-2"></p>
                     </div>
                 </div>
                 <div id="tab-cron" class="settings-tab-content hidden">
@@ -5443,10 +5624,9 @@ const App = {
         const pass = $('#smtp-pass').val();
         if (pass) payload.smtp_pass = pass;
         this.api('update_smtp_settings', payload, 'POST').done(() => {
-            $('#smtp-msg').text('SMTP settings saved.').css('color', 'var(--success)').removeClass('hidden');
-            setTimeout(() => $('#smtp-msg').addClass('hidden'), 3000);
+            this.toast('SMTP settings saved.', 'success');
         }).fail(xhr => {
-            $('#smtp-msg').text(xhr.responseJSON?.error || 'Failed').css('color', 'var(--danger)').removeClass('hidden');
+            this.toast(xhr.responseJSON?.error || 'Failed');
         });
     },
 
@@ -5454,9 +5634,9 @@ const App = {
         const to = prompt('Send test email to:');
         if (!to) return;
         this.api('test_smtp', { to }, 'POST').done(() => {
-            $('#smtp-msg').text('Test email sent!').css('color', 'var(--success)').removeClass('hidden');
+            this.toast('Test email sent!', 'success');
         }).fail(xhr => {
-            $('#smtp-msg').text(xhr.responseJSON?.error || 'Failed to send').css('color', 'var(--danger)').removeClass('hidden');
+            this.toast(xhr.responseJSON?.error || 'Failed to send');
         });
     },
 
@@ -5792,9 +5972,14 @@ const App = {
                     <tr><td><kbd>⌘</kbd> <kbd>G</kbd></td><td>App settings</td></tr>
                     <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
                     <tr><td><kbd>1</kbd> – <kbd>9</kbd></td><td>Open project by index (on project list)</td></tr>
+                    <tr><td><kbd>Backspace</kbd></td><td>Back to project list (from board)</td></tr>
                     <tr><td><kbd>Esc</kbd></td><td>Cancel / close modal / clear search</td></tr>
                 </table>
                 <p class="text-sm text-light mt-2">On Windows/Linux, use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.</p>
+            </div>
+            <div class="card-detail-section">
+                <h4>Recovery Key</h4>
+                <p class="text-base text">On first login, a recovery key is generated and shown once. Save it securely — it can replace your password if you forget it. After use, the key is rotated and you receive a new one. You can also regenerate it from <strong>Account &gt; Recovery Key</strong>.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Version</h4>
@@ -5931,6 +6116,7 @@ const App = {
 
     closeModal(event) {
         if (event && event.target !== event.currentTarget) return;
+        if ($('#rk-saved-check').length && !$('#rk-saved-check').is(':checked')) return;
         $('#modal-overlay').removeClass('active');
         $('.modal').removeClass('modal-wide');
         this._quill = null;
@@ -6051,6 +6237,12 @@ const App = {
     },
 
     formatMinutes(m) { const h = Math.floor(m / 60); const mins = m % 60; return h ? (mins ? `${h}h ${mins}m` : `${h}h`) : `${mins}m`; },
+    toast(msg, type = 'error') {
+        $('.toast').remove();
+        const $t = $(`<div class="toast toast-${type}">${this.esc(msg)}</div>`);
+        $('body').append($t);
+        setTimeout(() => $t.fadeOut(300, () => $t.remove()), 3500);
+    },
     esc(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML; },
     escAttr(str) { return this.esc(str).replace(/'/g, '&#39;'); }
 };
@@ -6147,6 +6339,13 @@ $(document).on('keydown', e => {
     if (!mod && !e.shiftKey && e.key >= '1' && e.key <= '9' && !App.currentProject) {
         const idx = parseInt(e.key) - 1;
         if (App.projects[idx]) App.openProject(App.projects[idx].id);
+        return;
+    }
+
+    // Backspace → back to project list (board only, no modal/card open)
+    if (e.key === 'Backspace' && !mod && App.currentProject && !App.isGuest && !App._openCardId && !$('#modal-overlay').hasClass('active')) {
+        e.preventDefault();
+        App.showProjects();
         return;
     }
 });

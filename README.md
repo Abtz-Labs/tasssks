@@ -145,6 +145,15 @@ Bearer token auth bypasses CSRF checks — no session cookie or `X-CSRF-Token` h
 
 Tokens can be revoked at any time from the Account menu. The raw token is shown only once at creation — store it securely.
 
+### Recovery Key
+
+On first login, each user receives a one-time recovery key (32 hex characters). This key can be used instead of a password if you forget it.
+
+- The key is shown **once** — save it in a secure place (password manager, encrypted note, etc.).
+- On the login screen, click "Use recovery key instead" and enter the key in place of your password.
+- After a successful recovery-key login, the key is automatically rotated and a new one is shown. Save the new key.
+- You can regenerate your recovery key at any time from **Account > Recovery Key** (requires your current password).
+
 ### App Settings (Admin Only)
 
 - SMTP configuration and test
@@ -166,6 +175,7 @@ Tokens can be revoked at any time from the Account menu. The raw token is shown 
 | `⌘G` | App settings |
 | `?` | Help |
 | `1`–`9` | Open project by index (on project list) |
+| `Backspace` | Back to project list (from board) |
 | `Esc` | Cancel / close modal / clear search |
 
 Single-letter shortcuts work when no input is focused. On Windows/Linux, use `Ctrl` instead of `⌘`.

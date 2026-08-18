@@ -109,6 +109,9 @@ assert_eq(false, $r['body']['authenticated'], 'not authenticated initially');
 $r = req('auth_setup', ['name' => 'Admin', 'email' => 'admin@test.com', 'password' => 'admin123'], 'POST');
 assert_eq(200, $r['status'], 'setup succeeds');
 assert_true(!empty($r['body']['csrf_token']), 'returns CSRF token');
+assert_true(!empty($r['body']['recovery_key']), 'setup returns recovery key');
+assert_eq(32, strlen($r['body']['recovery_key']), 'recovery key is 32 chars');
+$setupRecoveryKey = $r['body']['recovery_key'];
 $adminCsrf = $r['body']['csrf_token'];
 
 $r = req('auth_status');
@@ -137,6 +140,7 @@ assert_eq(403, $r['status'], 'wrong password returns 403');
 
 $r = req('auth_login', ['email' => 'admin@test.com', 'password' => 'admin123'], 'POST');
 assert_eq(200, $r['status'], 'correct login succeeds');
+assert_true(empty($r['body']['recovery_key']), 'second login does not return recovery key');
 $adminCsrf = $r['body']['csrf_token'];
 
 // ─── TEAM ────────────────────────────────────────────────
@@ -171,7 +175,12 @@ section('Member Permissions');
 $memberCookie = tempnam(sys_get_temp_dir(), 'kanban_member_');
 $r = req('auth_login', ['email' => 'member@test.com', 'password' => 'newpass1'], 'POST', '', $memberCookie);
 assert_eq(200, $r['status'], 'member login with reset password');
+assert_true(!empty($r['body']['recovery_key']), 'first login returns recovery key for member');
+assert_true(!empty($r['body']['password_reset']), 'first login sets password_reset for member');
+$memberRecoveryKey = $r['body']['recovery_key'];
 $memberCsrf = $r['body']['csrf_token'];
+// Consume password_reset flag so later tests work normally
+req('account_update', ['name' => 'Member', 'email' => 'member@test.com', 'password' => 'newpass1'], 'POST', $memberCsrf, $memberCookie);
 
 $r = req('team_list', [], 'GET', '', $memberCookie);
 assert_eq(403, $r['status'], 'member cannot list team');
@@ -826,6 +835,105 @@ foreach ($sensitiveFiles as $f) {
     assert_eq(403, $code, "access to $f blocked");
 }
 
+// ─── RECOVERY KEY ───────────────────────────────────────────
+section('Recovery Key');
+
+// Login with recovery key (admin)
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$r = req('auth_login', ['email' => 'admin@test.com', 'recovery_key' => $setupRecoveryKey], 'POST', '', $rkCookie);
+assert_eq(200, $r['status'], 'recovery key login succeeds');
+assert_true(!empty($r['body']['recovery_key']), 'recovery key login returns new key');
+assert_true($r['body']['recovery_key'] !== $setupRecoveryKey, 'new key differs from old key');
+$rotatedKey = $r['body']['recovery_key'];
+$rkCsrf = $r['body']['csrf_token'];
+
+// Old key no longer works
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$r = req('auth_login', ['email' => 'admin@test.com', 'recovery_key' => $setupRecoveryKey], 'POST', '', $rkCookie);
+assert_eq(403, $r['status'], 'old recovery key rejected after rotation');
+
+// New rotated key works
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$r = req('auth_login', ['email' => 'admin@test.com', 'recovery_key' => $rotatedKey], 'POST', '', $rkCookie);
+assert_eq(200, $r['status'], 'rotated recovery key works');
+$rotatedKey2 = $r['body']['recovery_key'];
+$rkCsrf = $r['body']['csrf_token'];
+
+// Wrong recovery key fails
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$r = req('auth_login', ['email' => 'admin@test.com', 'recovery_key' => 'deadbeefdeadbeefdeadbeefdeadbeef'], 'POST', '', $rkCookie);
+assert_eq(403, $r['status'], 'wrong recovery key returns 403');
+
+// Recovery key with dashes (formatted) works
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$formatted = implode('-', str_split(strtoupper($rotatedKey2), 4));
+$r = req('auth_login', ['email' => 'admin@test.com', 'recovery_key' => $formatted], 'POST', '', $rkCookie);
+assert_eq(200, $r['status'], 'formatted recovery key (with dashes) works');
+$rkCsrf = $r['body']['csrf_token'];
+
+// Regenerate recovery key from account
+$r = req('regenerate_recovery_key', ['password' => 'admin123'], 'POST', $rkCsrf, $rkCookie);
+assert_eq(200, $r['status'], 'regenerate recovery key succeeds');
+assert_true(!empty($r['body']['recovery_key']), 'regenerate returns new key');
+$regenKey = $r['body']['recovery_key'];
+
+// Regenerate with wrong password fails
+$r = req('regenerate_recovery_key', ['password' => 'wrongpass'], 'POST', $rkCsrf, $rkCookie);
+assert_eq(403, $r['status'], 'regenerate with wrong password fails');
+
+// Login with regenerated key works
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$r = req('auth_login', ['email' => 'admin@test.com', 'recovery_key' => $regenKey], 'POST', '', $rkCookie);
+assert_eq(200, $r['status'], 'regenerated key login works');
+$afterRegenKey = $r['body']['recovery_key'];
+
+// Recovery key in password field (fallback)
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$r = req('auth_login', ['email' => 'admin@test.com', 'password' => $afterRegenKey], 'POST', '', $rkCookie);
+assert_eq(200, $r['status'], 'recovery key in password field works');
+assert_true(!empty($r['body']['recovery_key']), 'password-field fallback rotates key');
+$fallbackKey = $r['body']['recovery_key'];
+
+// Formatted key (with dashes) in password field also works
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$formattedFallback = implode('-', str_split(strtoupper($fallbackKey), 4));
+$r = req('auth_login', ['email' => 'admin@test.com', 'password' => $formattedFallback], 'POST', '', $rkCookie);
+assert_eq(200, $r['status'], 'formatted key in password field works');
+assert_true(!empty($r['body']['recovery_key']), 'formatted fallback rotates key');
+
+// Password reset after recovery key login
+assert_true(!empty($r['body']['password_reset']), 'recovery login sets password_reset flag');
+$rkCsrf2 = $r['body']['csrf_token'];
+$r = req('account_update', ['name' => 'Admin', 'email' => 'admin@test.com', 'password' => 'recovered99'], 'POST', $rkCsrf2, $rkCookie);
+assert_eq(200, $r['status'], 'password reset without current password works');
+
+// After reset, current password is required again
+$r = req('account_update', ['name' => 'Admin', 'email' => 'admin@test.com', 'password' => 'another1'], 'POST', $rkCsrf2, $rkCookie);
+assert_eq(403, $r['status'], 'flag cleared: current password required again');
+
+// New password works for login
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$r = req('auth_login', ['email' => 'admin@test.com', 'password' => 'recovered99'], 'POST', '', $rkCookie);
+assert_eq(200, $r['status'], 'new password after recovery works');
+
+// Member recovery key login
+@unlink($rkCookie);
+$rkCookie = tempnam(sys_get_temp_dir(), 'kanban_rk_');
+$r = req('auth_login', ['email' => 'member@test.com', 'recovery_key' => $memberRecoveryKey], 'POST', '', $rkCookie);
+assert_eq(200, $r['status'], 'member recovery key login works');
+assert_true(!empty($r['body']['recovery_key']), 'member gets rotated key');
+assert_true(!empty($r['body']['password_reset']), 'member recovery login sets password_reset');
+
+@unlink($rkCookie);
+
 // ─── SECURITY: RATE LIMIT ───────────────────────────────
 section('Rate Limit');
 
@@ -965,6 +1073,17 @@ assert_true(str_contains($html, 'search-clear'), 'search-clear button present');
 assert_true(str_contains($html, 'searchCards('), 'searchCards JS function referenced');
 assert_true(str_contains($html, 'clearSearch('), 'clearSearch JS function referenced');
 assert_true(str_contains($html, 'updateColumnCounts('), 'updateColumnCounts JS function referenced');
+
+// Toast notification system
+assert_true(str_contains($html, '.toast'), 'toast CSS class present');
+assert_true(str_contains($html, 'toast-error'), 'toast-error CSS class present');
+assert_true(str_contains($html, 'toast-success'), 'toast-success CSS class present');
+assert_true(str_contains($html, 'toast(msg'), 'toast JS function defined');
+assert_true(str_contains($html, '@keyframes toast-in'), 'toast animation defined');
+assert_true(!str_contains($html, 'id="account-error"'), 'no inline account-error element');
+assert_true(!str_contains($html, 'id="team-error"'), 'no inline team-error element');
+assert_true(!str_contains($html, 'id="smtp-msg"'), 'no inline smtp-msg element');
+assert_true(!str_contains($html, 'alert('), 'no alert() calls');
 
 // Verify list_cards returns title and description (data contract for client-side search)
 $r = req('create_card', ['column_id' => $colId, 'title' => 'Search Alpha', 'description' => 'Findable description content'], 'POST', $adminCsrf);
