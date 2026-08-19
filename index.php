@@ -6470,7 +6470,7 @@ $(document).on('keydown', '#setup-name, #setup-email, #setup-password', e => { i
 $(App.init.bind(App));
 </script>
 <footer class="app-footer">
-  <p>Designed, built, and backed by <a href="https://x.com/rogeriotaques" target="_blank" rel="noopener noreferrer">Rogerio Taques</a>, the guy behind <a href="https://abtz.co?ref=Tasssks&utm_source=Tasssks&utm_media=Instance" target="_blank" rel="noopener noreferrer">Abtz Labs</a>.</p>
+  <p>Designed and built by <a href="https://x.com/rogeriotaques" target="_blank" rel="noopener noreferrer">Rogerio Taques</a>, the guy behind <a href="https://abtz.co?ref=Tasssks&utm_source=Tasssks&utm_media=Instance" target="_blank" rel="noopener noreferrer">Abtz Labs</a>.</p>
   <p>#<?= APP_VERSION ?> &copy; Abtz Labs.</p>
 </footer>
 </body>
