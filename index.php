@@ -709,9 +709,20 @@ if ($action) {
         'check_update' => apiCheckUpdate(),
         'apply_update' => apiApplyUpdate(),
 
+        // Health
+        'ping' => apiPing(),
+
         default => jsonResponse(['error' => 'Unknown action'], 404),
     };
     exit;
+}
+
+// ============================================================================
+// API: HEALTH
+// ============================================================================
+
+function apiPing(): void {
+    jsonResponse(['status' => 'pong']);
 }
 
 // ============================================================================

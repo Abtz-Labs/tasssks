@@ -158,6 +158,17 @@ Bearer token auth bypasses CSRF checks — no session cookie or `X-CSRF-Token` h
 
 Tokens can be revoked at any time from the Account menu. The raw token is shown only once at creation — store it securely.
 
+### Health Check
+
+The `ping` endpoint returns a simple health status. No authentication required.
+
+```bash
+curl "https://your-instance/?action=ping"
+# {"status":"pong"}
+```
+
+Useful for uptime monitors and load balancer health checks.
+
 ### Recovery Key
 
 On first login, each user receives a one-time recovery key (32 hex characters). This key can be used instead of a password if you forget it.

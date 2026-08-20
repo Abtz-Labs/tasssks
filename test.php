@@ -122,6 +122,13 @@ assert_eq(false, $r['body']['needs_setup'], 'needs_setup is false after setup');
 $r = req('auth_setup', ['name' => 'Dup', 'email' => 'dup@test.com', 'password' => '123456'], 'POST');
 assert_eq(400, $r['status'], 'cannot run setup again');
 
+// ─── HEALTH ──────────────────────────────────────────────
+section('Health Check');
+
+$r = req('ping');
+assert_eq(200, $r['status'], 'ping returns 200');
+assert_eq('pong', $r['body']['status'], 'ping returns pong');
+
 // ─── LOGIN ───────────────────────────────────────────────
 section('Login');
 
