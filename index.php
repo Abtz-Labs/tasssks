@@ -70,6 +70,8 @@ function initDatabase(): void {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             slug TEXT NOT NULL UNIQUE,
+            week_start_day INTEGER DEFAULT 1,
+            cycle_reset_day INTEGER DEFAULT 1,
             created_at TEXT DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS project_owners (
@@ -303,7 +305,18 @@ function migrateDatabase(PDO $db): void {
         }
     }
 
-    $db->exec('PRAGMA user_version = 5');
+    // Version 5 → 6: Project reporting settings (week_start_day, cycle_reset_day)
+    if ($version < 6) {
+        $cols = array_column($db->query("PRAGMA table_info(projects)")->fetchAll(), 'name');
+        if (!in_array('week_start_day', $cols)) {
+            $db->exec("ALTER TABLE projects ADD COLUMN week_start_day INTEGER DEFAULT 1");
+        }
+        if (!in_array('cycle_reset_day', $cols)) {
+            $db->exec("ALTER TABLE projects ADD COLUMN cycle_reset_day INTEGER DEFAULT 1");
+        }
+    }
+
+    $db->exec('PRAGMA user_version = 6');
 }
 
 // ============================================================================
@@ -610,6 +623,7 @@ if ($action) {
 
         // App Settings (admin only)
         'auth_set_app_name' => apiAuthSetAppName(),
+        'auth_set_locale' => apiAuthSetLocale(),
 
         // Projects
         'list_projects' => apiListProjects(),
@@ -707,6 +721,7 @@ if ($action) {
 function apiAuthStatus(): void {
     $db = getDb();
     $appNameRow = $db->query("SELECT value FROM settings WHERE key = 'app_name'")->fetch();
+    $localeRow = $db->query("SELECT value FROM settings WHERE key = 'locale'")->fetch();
     $user = getCurrentUser();
 
     // Check for updates: clear flag if local version already matches latest
@@ -726,6 +741,7 @@ function apiAuthStatus(): void {
         'authenticated' => $user !== null,
         'user' => $user,
         'app_name' => ($appNameRow && $appNameRow['value']) ? $appNameRow['value'] : APP_NAME,
+        'locale' => ($localeRow && $localeRow['value']) ? $localeRow['value'] : 'en',
         'csrf_token' => $_SESSION['csrf_token'] ?? '',
         'version' => APP_VERSION,
         'update_available' => $updateAvailable,
@@ -875,6 +891,17 @@ function apiAuthSetAppName(): void {
     if (!$name) jsonResponse(['error' => 'Name cannot be empty'], 400);
 
     setSetting('app_name', $name);
+    jsonResponse(['ok' => true]);
+}
+
+function apiAuthSetLocale(): void {
+    requireAdmin();
+    $input = getInput();
+    $locale = trim($input['locale'] ?? '');
+    $valid = ['en', 'pt-BR', 'de', 'fr', 'es', 'it', 'ja'];
+    if (!in_array($locale, $valid)) jsonResponse(['error' => 'Invalid locale'], 400);
+
+    setSetting('locale', $locale);
     jsonResponse(['ok' => true]);
 }
 
@@ -1120,7 +1147,7 @@ function apiListProjects(): void {
     requireAuth();
     $user = getCurrentUser();
     $db = getDb();
-    $projects = $db->query("SELECT id, name, slug, created_at, guest_can_create_cards, guest_can_sort_cards, guest_can_view_time FROM projects ORDER BY created_at DESC")->fetchAll();
+    $projects = $db->query("SELECT id, name, slug, created_at, guest_can_create_cards, guest_can_sort_cards, guest_can_view_time, week_start_day, cycle_reset_day FROM projects ORDER BY created_at DESC")->fetchAll();
 
     foreach ($projects as &$project) {
         $stmt = $db->prepare("
@@ -1231,6 +1258,18 @@ function apiUpdateProject(): void {
     if (isset($input['guest_can_view_time'])) {
         $fields[] = 'guest_can_view_time = ?';
         $params[] = (int) $input['guest_can_view_time'];
+    }
+    if (isset($input['week_start_day'])) {
+        $val = (int) $input['week_start_day'];
+        if ($val < 0 || $val > 6) jsonResponse(['error' => 'week_start_day must be 0-6'], 400);
+        $fields[] = 'week_start_day = ?';
+        $params[] = $val;
+    }
+    if (isset($input['cycle_reset_day'])) {
+        $val = (int) $input['cycle_reset_day'];
+        if ($val < 1 || $val > 31) jsonResponse(['error' => 'cycle_reset_day must be 1-31'], 400);
+        $fields[] = 'cycle_reset_day = ?';
+        $params[] = $val;
     }
 
     if ($fields) {
@@ -4207,6 +4246,7 @@ const App = {
         } else {
             this.api('auth_status').done(status => {
                 this.appName = status.app_name || '<?= APP_NAME ?>';
+                this.locale = status.locale || 'en';
                 this.updateBrand();
                 this.appVersion = status.version || '<?= APP_VERSION ?>';
                 this.updateAvailable = status.update_available || false;
@@ -5455,12 +5495,50 @@ const App = {
         const pid = this.currentProject.id;
         period = period || 'month';
         const now = new Date();
-        let from = '', to = now.toISOString().slice(0,10);
+        let from = '', to = this.toLocalDateStr(now);
         if (period === 'today') { from = to; }
-        else if (period === 'week') { const d = new Date(now); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); from = d.toISOString().slice(0,10); }
-        else if (period === 'month') { from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`; }
+        else if (period === 'week') {
+            const weekStart = this.currentProject.week_start_day ?? 1;
+            const start = new Date(now);
+            const diff = (start.getDay() - weekStart + 7) % 7;
+            start.setDate(start.getDate() - diff);
+            const end = new Date(start);
+            end.setDate(end.getDate() + 6);
+            from = this.toLocalDateStr(start);
+            to = this.toLocalDateStr(end);
+        }
+        else if (period === 'month') {
+            const resetDay = this.currentProject.cycle_reset_day ?? 1;
+            if (resetDay <= 1) {
+                from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+            } else {
+                const today = now.getDate();
+                let cycleStart;
+                if (today >= resetDay) {
+                    cycleStart = new Date(now.getFullYear(), now.getMonth(), resetDay);
+                } else {
+                    cycleStart = new Date(now.getFullYear(), now.getMonth() - 1, resetDay);
+                }
+                const nextReset = new Date(cycleStart);
+                nextReset.setMonth(nextReset.getMonth() + 1);
+                const cycleEnd = new Date(nextReset);
+                cycleEnd.setDate(cycleEnd.getDate() - 1);
+                from = this.toLocalDateStr(cycleStart);
+                to = this.toLocalDateStr(cycleEnd);
+            }
+        }
         else if (period === 'year') { from = `${now.getFullYear()}-01-01`; }
         else if (period === 'custom') { from = $('#report-from').val(); to = $('#report-to').val(); }
+        let periodLabel = '';
+        if (period === 'today') {
+            periodLabel = this.formatDate(to);
+        } else if (period === 'week' || period === 'month') {
+            periodLabel = this.formatDate(from) + ' \u2013 ' + this.formatDate(to);
+        } else if (period === 'year') {
+            periodLabel = now.getFullYear().toString();
+        } else if (period === 'custom' && from && to) {
+            periodLabel = this.formatDate(from) + ' \u2013 ' + this.formatDate(to);
+        }
         const params = { project_id: pid };
         if (from) params.from = from;
         if (to) params.to = to;
@@ -5479,7 +5557,7 @@ const App = {
             } else {
                 const grouped = {};
                 rows.forEach(e => { if (!grouped[e.worked_at]) grouped[e.worked_at] = 0; grouped[e.worked_at] += e.minutes; });
-                tableHtml = Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0])).map(([date, m]) => `<tr><td>${date}</td><td>${this.formatMinutes(m)}</td><td></td></tr>`).join('');
+                tableHtml = Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0])).map(([date, m]) => `<tr><td>${this.formatDate(date)}</td><td>${this.formatMinutes(m)}</td><td></td></tr>`).join('');
             }
             const content = `
                 <div class="report-controls">
@@ -5496,6 +5574,7 @@ const App = {
                         <button class="btn btn-sm ${groupBy==='date'?'btn-primary':'btn-ghost'}" onclick="App._reportGroupBy='date';App.showTimeReport('${period}')">Date</button>
                     </div>
                 </div>
+                ${periodLabel ? `<div class="report-period-label text-sm text-muted mb-3">${periodLabel}</div>` : ''}
                 <div class="report-summary">
                     <div class="report-stat"><strong>${this.formatMinutes(data.total_minutes)}</strong><span>Total</span></div>
                     <div class="report-stat"><strong>${data.entry_count}</strong><span>Entries</span></div>
@@ -5656,6 +5735,12 @@ const App = {
                             <button class="btn btn-primary" onclick="App.setAppName()">Save</button>
                         </div>
                     </div>
+                    <div class="card-detail-section"><h4>Locale</h4>
+                        <select id="app-locale" class="select-sm" onchange="App.setLocale(this.value)">
+                            ${[['en','English'],['pt-BR','Português (BR)'],['de','Deutsch'],['fr','Français'],['es','Español'],['it','Italiano'],['ja','日本語']].map(([v,l]) => `<option value="${v}" ${this.locale===v?'selected':''}>${l}</option>`).join('')}
+                        </select>
+                        <span class="text-xs text-muted">Used for date formatting in reports.</span>
+                    </div>
                 </div>
                 <div id="tab-smtp" class="settings-tab-content hidden">
                     <div class="card-detail-section"><h4>SMTP (Email Notifications)</h4>
@@ -5770,6 +5855,29 @@ const App = {
             this.updateBrand();
             this.showAppSettings();
         });
+    },
+
+    setLocale(locale) {
+        this.api('auth_set_locale', { locale }, 'POST').done(() => {
+            this.locale = locale;
+            this.toast('Locale saved.', 'success');
+        }).fail(xhr => {
+            this.toast(xhr.responseJSON?.error || 'Failed');
+        });
+    },
+
+    formatDate(str) {
+        if (!str) return '';
+        try {
+            const d = new Date(str + 'T00:00:00');
+            return new Intl.DateTimeFormat(this.locale || 'en', { dateStyle: 'medium' }).format(d);
+        } catch {
+            return str;
+        }
+    },
+
+    toLocalDateStr(d) {
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
     },
 
     checkUpdate() {
@@ -5897,6 +6005,23 @@ const App = {
                         <button class="btn btn-primary btn-sm btn-shrink-0" onclick="App.createTagFromSettings()">Add</button>
                     </div>
                     </div>
+                    <div class="card-detail-section"><h4>Reporting</h4>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="text-sm text-light">First Day of Week</label>
+                                <select id="week-start-day" class="select-sm" onchange="App.updateProjectSetting('week_start_day', parseInt(this.value))">
+                                    ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d,i) => `<option value="${i}" ${(this.currentProject.week_start_day ?? 1) == i ? 'selected' : ''}>${d}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="text-sm text-light">Cycle Reset Day</label>
+                                <select id="cycle-reset-day" class="select-sm" onchange="App.updateProjectSetting('cycle_reset_day', parseInt(this.value))">
+                                    ${Array.from({length:31},(_,i)=>i+1).map(d => `<option value="${d}" ${(this.currentProject.cycle_reset_day ?? 1) == d ? 'selected' : ''}>${d}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <span class="text-xs text-muted">Billing cycle resets on the selected day of each month (e.g. 25th → 24th next month).</span>
+                    </div>
                 </div>
                 <div id="ptab-webhooks" class="settings-tab-content hidden">
                     <div class="card-detail-section"><h4>Webhooks <a href="#" onclick="event.preventDefault();App.showWebhookPayloads()" class="text-xs font-normal ml-2">View payload format</a></h4>
@@ -5968,6 +6093,12 @@ const App = {
         payload[key] = value ? 1 : 0;
         this.api('update_project', payload, 'POST').done(() => {
             this.currentProject[key] = value ? 1 : 0;
+        });
+    },
+
+    updateProjectSetting(key, value) {
+        this.api('update_project', { id: this.currentProject.id, [key]: value }, 'POST').done(() => {
+            this.currentProject[key] = value;
         });
     },
 

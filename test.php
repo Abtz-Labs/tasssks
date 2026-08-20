@@ -1533,6 +1533,107 @@ assert_eq(403, $code, 'index.php.bak blocked by security');
 
 @unlink($guestCookie);
 
+// ─── PROJECT REPORTING SETTINGS ─────────────────────────
+section('Project Reporting Settings');
+
+// New project has default week_start_day=1 (Monday) and cycle_reset_day=1
+$r = req('create_project', ['name' => 'Reporting Test'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create reporting test project');
+$reportProjId = $r['body']['id'];
+
+$r = req('list_projects');
+$rp = array_values(array_filter($r['body'], fn($p) => $p['id'] === $reportProjId))[0] ?? null;
+assert_eq(1, (int)($rp['week_start_day'] ?? -1), 'default week_start_day is 1 (Monday)');
+assert_eq(1, (int)($rp['cycle_reset_day'] ?? -1), 'default cycle_reset_day is 1');
+
+// Update week_start_day to 0 (Sunday)
+$r = req('update_project', ['id' => $reportProjId, 'week_start_day' => 0], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'update week_start_day to 0');
+
+$r = req('list_projects');
+$rp = array_values(array_filter($r['body'], fn($p) => $p['id'] === $reportProjId))[0] ?? null;
+assert_eq(0, (int)$rp['week_start_day'], 'week_start_day persisted as 0');
+
+// Update cycle_reset_day to 25
+$r = req('update_project', ['id' => $reportProjId, 'cycle_reset_day' => 25], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'update cycle_reset_day to 25');
+
+$r = req('list_projects');
+$rp = array_values(array_filter($r['body'], fn($p) => $p['id'] === $reportProjId))[0] ?? null;
+assert_eq(25, (int)$rp['cycle_reset_day'], 'cycle_reset_day persisted as 25');
+
+// Validate week_start_day range (must be 0-6)
+$r = req('update_project', ['id' => $reportProjId, 'week_start_day' => 7], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'week_start_day=7 rejected');
+
+$r = req('update_project', ['id' => $reportProjId, 'week_start_day' => -1], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'week_start_day=-1 rejected');
+
+// Validate cycle_reset_day range (must be 1-31)
+$r = req('update_project', ['id' => $reportProjId, 'cycle_reset_day' => 32], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'cycle_reset_day=32 rejected');
+
+$r = req('update_project', ['id' => $reportProjId, 'cycle_reset_day' => 0], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'cycle_reset_day=0 rejected');
+
+// Valid edge cases
+$r = req('update_project', ['id' => $reportProjId, 'week_start_day' => 6], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'week_start_day=6 (Saturday) accepted');
+
+$r = req('update_project', ['id' => $reportProjId, 'cycle_reset_day' => 31], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'cycle_reset_day=31 accepted');
+
+// Both fields can be updated together
+$r = req('update_project', ['id' => $reportProjId, 'week_start_day' => 1, 'cycle_reset_day' => 15], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'both fields updated together');
+
+$r = req('list_projects');
+$rp = array_values(array_filter($r['body'], fn($p) => $p['id'] === $reportProjId))[0] ?? null;
+assert_eq(1, (int)$rp['week_start_day'], 'week_start_day=1 after combined update');
+assert_eq(15, (int)$rp['cycle_reset_day'], 'cycle_reset_day=15 after combined update');
+
+// Cleanup reporting test project
+req('delete_project', ['id' => $reportProjId], 'POST', $adminCsrf);
+
+// ─── LOCALE SETTINGS ────────────────────────────────────
+section('Locale Settings');
+
+// auth_status returns locale field (default 'en')
+$r = req('auth_status');
+assert_true(isset($r['body']['locale']), 'auth_status returns locale field');
+assert_eq('en', $r['body']['locale'], 'default locale is en');
+
+// Set locale to pt-BR
+$r = req('auth_set_locale', ['locale' => 'pt-BR'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'set locale to pt-BR');
+
+// Verify persistence
+$r = req('auth_status');
+assert_eq('pt-BR', $r['body']['locale'], 'locale persisted as pt-BR');
+
+// Set locale to de
+$r = req('auth_set_locale', ['locale' => 'de'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'set locale to de');
+
+$r = req('auth_status');
+assert_eq('de', $r['body']['locale'], 'locale persisted as de');
+
+// Invalid locale rejected
+$r = req('auth_set_locale', ['locale' => 'xx-INVALID'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'invalid locale rejected');
+
+// Empty locale rejected
+$r = req('auth_set_locale', ['locale' => ''], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'empty locale rejected');
+
+// Member cannot set locale
+$r = req('auth_set_locale', ['locale' => 'fr'], 'POST', $memberCsrf, $memberCookie);
+assert_eq(403, $r['status'], 'member cannot set locale');
+
+// Reset locale back to en
+$r = req('auth_set_locale', ['locale' => 'en'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'reset locale to en');
+
 // ─── CODE QUALITY ────────────────────────────────────────
 section('Code Quality');
 
@@ -1561,6 +1662,10 @@ assert_true(!str_contains($src, 'QUILL_TOOLBAR_COMPACT'), 'QUILL_TOOLBAR_COMPACT
 
 // selectTagColor must not hardcode a specific hidden input ID (bug: project settings uses different ID)
 assert_true(!str_contains($src, "selectTagColor(el, color) {\n") || !str_contains($src, "\$('#new-tag-color').val(color)"), 'selectTagColor does not hardcode new-tag-color input');
+
+// formatDate helper exists and uses Intl.DateTimeFormat
+assert_true(str_contains($src, 'formatDate('), 'formatDate helper defined');
+assert_true(str_contains($src, 'Intl.DateTimeFormat'), 'formatDate uses Intl.DateTimeFormat');
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . str_repeat('=', 40) . "\n";
