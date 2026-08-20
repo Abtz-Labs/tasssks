@@ -573,9 +573,21 @@ function autoWatchProject(string $projectId, int $userId): void {
 // API ROUTER
 // ============================================================================
 
-initDatabase();
-
 $action = $_GET['action'] ?? '';
+
+// Handle ping before initDatabase() so DB errors are caught
+if ($action === 'ping') {
+    if (file_exists(DB_FILE)) {
+        jsonResponse(['status' => 'pong']);
+    } elseif (is_writable(dirname(DB_FILE))) {
+        jsonResponse(['status' => 'pong']);
+    } else {
+        jsonResponse(['error' => 'Database unavailable'], 503);
+    }
+    exit;
+}
+
+initDatabase();
 
 // Bearer token authentication (API tokens)
 $_tokenAuth = false;
@@ -709,20 +721,9 @@ if ($action) {
         'check_update' => apiCheckUpdate(),
         'apply_update' => apiApplyUpdate(),
 
-        // Health
-        'ping' => apiPing(),
-
         default => jsonResponse(['error' => 'Unknown action'], 404),
     };
     exit;
-}
-
-// ============================================================================
-// API: HEALTH
-// ============================================================================
-
-function apiPing(): void {
-    jsonResponse(['status' => 'pong']);
 }
 
 // ============================================================================

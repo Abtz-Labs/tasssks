@@ -129,6 +129,31 @@ $r = req('ping');
 assert_eq(200, $r['status'], 'ping returns 200');
 assert_eq('pong', $r['body']['status'], 'ping returns pong');
 
+// Test DB error path: non-writable directory = 503
+$noWriteDir = sys_get_temp_dir() . '/tasssks_test_nowrite';
+@mkdir($noWriteDir, 0755);
+chmod($noWriteDir, 0000);
+$noWriteDb = $noWriteDir . '/test.sqlite';
+$noWritePort = $TEST_PORT + 2;
+$noWriteProc = proc_open(
+    sprintf('TASSSKS_DB_FILE=%s php -S localhost:%d -t %s %s/index.php', escapeshellarg($noWriteDb), $noWritePort, escapeshellarg(__DIR__), escapeshellarg(__DIR__)),
+    [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $noWritePipes
+);
+usleep(500000);
+$ch = curl_init("http://localhost:$noWritePort/?action=ping");
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$noWriteBody = curl_exec($ch);
+$noWriteCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+proc_terminate($noWriteProc);
+proc_close($noWriteProc);
+chmod($noWriteDir, 0755);
+@unlink($noWriteDb);
+rmdir($noWriteDir);
+$noWriteResult = json_decode($noWriteBody, true) ?? [];
+assert_eq(503, $noWriteCode, 'ping returns 503 when DB directory is not writable');
+assert_eq('Database unavailable', $noWriteResult['error'] ?? null, 'ping returns DB error message');
+
 // ─── LOGIN ───────────────────────────────────────────────
 section('Login');
 
