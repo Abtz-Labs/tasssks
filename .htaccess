@@ -6,9 +6,7 @@ RewriteRule ^ index.php [L]
     Require all denied
 </FilesMatch>
 
-<DirectoryMatch "^/.*/\.git">
-    Require all denied
-</DirectoryMatch>
+RewriteRule \.git - [F,L]
 
 <Files "test.php">
     Require all denied
