@@ -2881,7 +2881,7 @@ function apiApplyUpdate(): void {
 // SMTP SENDER
 // ============================================================================
 
-function sendSmtpEmail(array $smtp, string $to, string $subject, string $body): true|string {
+function sendSmtpEmail(array $smtp, string $to, string $subject, string $body): string|bool {
     $host = $smtp['smtp_host'];
     $port = (int) $smtp['smtp_port'];
     $user = $smtp['smtp_user'];

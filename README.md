@@ -208,7 +208,7 @@ Single-letter shortcuts work when no input is focused. On Windows/Linux, use `Ct
 
 For production, use Apache or Nginx with PHP-FPM. The key security considerations:
 
-- **Database location.** By default the SQLite file (`tasssks.sqlite`) is created in the same directory as `index.php`. Set the `TASSSKS_DB_FILE` environment variable to place it outside the web root (recommended). Examples:
+- **Database location.** By default the SQLite file (`tasssks.sqlite`) is created in the same directory as `index.php`. Set the `TASSSKS_DB_FILE` environment variable to place it outside the web root (recommended). Make sure the path is within PHP's `open_basedir` (common on shared hosting — ask your provider if unsure). Examples:
 
   ```bash
   # PHP built-in server (dev)
@@ -223,6 +223,8 @@ For production, use Apache or Nginx with PHP-FPM. The key security consideration
   # Docker / systemd
   Environment=TASSSKS_DB_FILE=/var/data/tasssks.sqlite
   ```
+
+  On shared hosting, a safe location is often a `private/` subdirectory inside your web root (e.g. `/home/user/web/example.com/private/tasssks.sqlite`). This directory is typically outside the web root and within `open_basedir`.
 - **Deny direct file access.** The application blocks requests to `.sqlite`, `.env`, and `.git` paths internally, but your web server should also enforce this as a second layer.
 - **Do not deploy `test.php` to production.** It is a development-only file.
 
