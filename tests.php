@@ -42,6 +42,10 @@ if (!$ready) {
     exit(1);
 }
 
+function colorGreen(string $s): string { return "\033[32m" . $s . "\033[0m"; }
+function colorRed(string $s): string { return "\033[31m" . $s . "\033[0m"; }
+function colorBold(string $s): string { return "\033[1m" . $s . "\033[0m"; }
+
 function req(string $action, array $data = [], string $method = 'GET', string $csrf = '', string $cookie = ''): array {
     global $BASE, $cookieFile;
     $url = "$BASE/?action=$action";
@@ -80,19 +84,30 @@ function assert_eq($expected, $actual, string $msg): void {
     global $passed, $failed;
     if ($expected === $actual) {
         $passed++;
-        echo "  ✓ $msg\n";
+        echo '  ' . colorGreen('PASS') . ' ' . $msg . "\n";
     } else {
         $failed++;
-        echo "  ✗ $msg\n    Expected: " . json_encode($expected) . "\n    Got:      " . json_encode($actual) . "\n";
+        echo '  ' . colorRed('FAIL') . ' ' . $msg . "\n";
+        echo '    ' . colorRed('expected: ' . var_export($expected, true)) . "\n";
+        echo '    ' . colorRed('actual:   ' . var_export($actual, true)) . "\n";
     }
 }
 
 function assert_true($val, string $msg): void {
-    assert_eq(true, (bool)$val, $msg);
+    global $passed, $failed;
+    if ((bool)$val) {
+        $passed++;
+        echo '  ' . colorGreen('PASS') . ' ' . $msg . "\n";
+    } else {
+        $failed++;
+        echo '  ' . colorRed('FAIL') . ' ' . $msg . "\n";
+        echo '    ' . colorRed('expected: true') . "\n";
+        echo '    ' . colorRed('actual:   false') . "\n";
+    }
 }
 
 function section(string $name): void {
-    echo "\n\033[1m[$name]\033[0m\n";
+    echo "\n" . colorBold('=== ' . $name . ' ===') . "\n";
 }
 
 echo "Tasssks Test Suite\n";
@@ -1700,8 +1715,15 @@ assert_true(str_contains($src, 'formatDate('), 'formatDate helper defined');
 assert_true(str_contains($src, 'Intl.DateTimeFormat'), 'formatDate uses Intl.DateTimeFormat');
 
 // ─── RESULTS ─────────────────────────────────────────────
-echo "\n" . str_repeat('=', 40) . "\n";
-echo "Results: \033[32m$passed passed\033[0m, " . ($failed ? "\033[31m$failed failed\033[0m" : "0 failed") . "\n";
+echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
+if ($failed === 0) {
+    echo colorGreen('ALL TESTS PASSED') . "\n";
+} else {
+    echo colorRed('TESTS FAILED') . "\n";
+}
+$total = $passed + $failed;
+echo colorBold("Pass: $passed  Fail: $failed  Total: $total") . "\n";
+echo colorBold(str_repeat('=', 80)) . "\n";
 
 // Cleanup
 proc_terminate($serverProc);
