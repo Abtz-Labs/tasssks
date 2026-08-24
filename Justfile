@@ -33,4 +33,4 @@ stop:
 
 # Run test suite
 test:
-    php test.php
+    php tests.php

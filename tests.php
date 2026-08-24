@@ -1,7 +1,7 @@
 <?php
 /**
  * Tasssks API Test Suite
- * Run: php test.php
+ * Run: php tests.php
  * Spins up its own test server using test.sqlite (never touches tasssks.sqlite).
  */
 error_reporting(E_ALL & ~E_DEPRECATED);

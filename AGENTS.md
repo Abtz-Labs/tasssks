@@ -18,7 +18,7 @@ Or directly: `php -S localhost:8080 index.php`
 ## Architecture
 
 - **`index.php`** — the entire app. Routes, API handlers, DB schema/migrations, HTML template, CSS, and JS all in one file.
-- **`test.php`** — API test suite. Spins up a dedicated PHP server on port 8089 with `test.sqlite`. Uses `curl` for HTTP requests. Never touches `kanban.sqlite`.
+- **`tests.php`** — API test suite. Spins up a dedicated PHP server on port 8089 with `test.sqlite`. Uses `curl` for HTTP requests. Never touches `kanban.sqlite`.
 - **`.htaccess`** — Apache rewrite rules + sensitive file blocking.
 - API routing: `?action=<name>` query parameter. POST endpoints require `X-CSRF-Token` header (session auth) OR `Authorization: Bearer <token>` header (API token auth — bypasses CSRF).
 - DB migrations use `PRAGMA user_version` (version-based, sequential). New migrations go at the end of `migrateDatabase()` with `if ($version < N)` guard.
@@ -39,7 +39,7 @@ Two auth methods:
 
 Tests run against a real server (port 8089) with a temporary SQLite DB. The test suite is self-contained — it starts the server, runs tests, and shuts it down. No external test framework.
 
-To run: `just test` or `php test.php`
+To run: `just test` or `php tests.php`
 
 Tests cover: auth, team, projects, columns, cards, comments, guests, webhooks, watchers, notifications, SMTP, search, security headers, CSRF, rate limiting, file blocking, tags, time tracking, code quality checks.
 
