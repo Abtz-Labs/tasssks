@@ -1288,6 +1288,10 @@ assert_true(str_contains($html, 'metaKey'), 'CMD key binding exists');
 assert_true(str_contains($html, '.markdown-body ol'), 'CSS styles markdown-body ordered lists');
 assert_true(str_contains($html, '.markdown-body ul'), 'CSS styles markdown-body unordered lists');
 assert_true(str_contains($html, '.markdown-body li'), 'CSS styles markdown-body list items');
+assert_true(str_contains($html, '.comment-author'), 'Comment author class exists');
+assert_true(str_contains($html, '.comment-body'), 'Comment body class exists');
+assert_true(str_contains($html, 'wrote:'), 'Comment shows "wrote:" after author name');
+assert_true(str_contains($html, '.comment-body') && str_contains($html, 'margin-top: 16px'), 'Comment body has 16px top margin');
 
 // ─── API TOKENS ─────────────────────────────────────────
 section('API Tokens');

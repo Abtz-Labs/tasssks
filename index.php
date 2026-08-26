@@ -3470,7 +3470,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 .comment-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
 .comment-author { font-weight: 600; }
 .comment-date { color: var(--text-light); }
-.comment-body { font-size: 14px; }
+.comment-body { font-size: 14px; margin-top: 16px; }
 
 .attachment-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
 .attachment-item { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; aspect-ratio: 1; }
@@ -3593,8 +3593,9 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 .card-detail-meta { font-size: 12px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; flex: 1; }
 .card-detail-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .card-detail-tags .tag-add { background: var(--border); cursor: pointer; font-size: 13px; }
-.card-detail-actions { margin-bottom: 12px; }
-.card-detail-actions-end { display: flex; justify-content: flex-end; margin-top: 8px; }
+.card-detail-actions { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+.card-detail-actions .quill-wrap { flex: 1; min-width: 0; }
+.card-detail-actions-end { display: flex; justify-content: flex-end; }
 .btn-edit-inline { height: 22px; padding: 0 8px; font-size: 11px; margin-left: 8px; }
 .btn-edit-title { height: 22px; padding: 0 8px; font-size: 11px; vertical-align: middle; }
 .btn-watch { height: 30px; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
@@ -5154,7 +5155,7 @@ const App = {
                     const rendered = DOMPurify.sanitize(marked.parse(safeContent), { ADD_ATTR: ['target'] });
                     return `<div class="comment">
                         <div class="comment-header">
-                            <span class="comment-author">${this.esc(c.author_name)}</span>
+                            <span class="comment-author">${this.esc(c.author_name)} wrote:</span>
                             <span class="flex-center gap-2">
                                 ${isOwn ? `<button class="btn btn-ghost btn-sm btn-comment" onclick="App.editComment(${c.id},${cardId})">Edit</button>
                                 <button class="btn btn-ghost btn-sm btn-comment-danger" onclick="App.deleteComment(${c.id},${cardId})">Delete</button>` : ''}
