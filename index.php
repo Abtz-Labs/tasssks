@@ -4974,7 +4974,15 @@ const App = {
         ` : '';
         const titleHtml = this.esc(card.title) + (!this.isGuest ? ` <button class="btn btn-ghost btn-sm btn-edit-title" onclick="App.editCardTitle(${cardId})">Edit</button>` : '');
         this.openModal(titleHtml, body, footer);
-        setTimeout(() => { this._quillComment = _initQuill('#new-comment', { compact: true, placeholder: 'Write a comment...' }); }, 50);
+        setTimeout(() => {
+            this._quillComment = _initQuill('#new-comment', { compact: true, placeholder: 'Write a comment...' });
+            $(this._quillComment.root).on('keydown', e => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    this.addComment(cardId);
+                }
+            });
+        }, 50);
         this.loadComments(cardId);
         this.api('mark_comments_seen', { card_id: cardId }, 'POST').done(() => {
             delete this.unreadCounts[cardId];

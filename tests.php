@@ -1278,6 +1278,10 @@ assert_true(str_contains($html, 'ADD_ATTR'), 'DOMPurify configured to allow targ
 // Comment raw data attribute for edit roundtrip
 assert_true(str_contains($html, 'data-raw'), 'Comments store raw markdown in data-raw attribute');
 
+// CMD+ENTER submits comment
+assert_true(str_contains($html, 'keydown'), 'keydown handler configured for comment submit');
+assert_true(str_contains($html, 'metaKey'), 'CMD key binding exists');
+
 // ─── API TOKENS ─────────────────────────────────────────
 section('API Tokens');
 
