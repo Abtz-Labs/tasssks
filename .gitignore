@@ -1,8 +1,8 @@
 # Database files
 *.sqlite3
 *.sqlite
+*.sqlite-*
 *.db
-
 # Server PID file
 .server.pid
 
