@@ -5223,7 +5223,7 @@ const App = {
         if (!files.length) return;
         const uploads = Array.from(files).map(file => {
             const fd = new FormData(); fd.append('file', file); fd.append('card_id', cardId);
-            return $.ajax({ url: '?action=upload_attachment', method: 'POST', data: fd, contentType: false, processData: false, dataType: 'json' });
+            return this.api('upload_attachment', fd, 'POST');
         });
         $.when(...uploads).always(() => { this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200); });
     },

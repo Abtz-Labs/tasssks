@@ -80,6 +80,35 @@ function req(string $action, array $data = [], string $method = 'GET', string $c
     return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
 }
 
+function reqUpload(string $action, string $filePath, int $cardId, string $csrf = '', string $cookie = ''): array {
+    global $BASE, $cookieFile;
+    $url = "$BASE/?action=$action";
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => [
+            'file' => new CURLFile($filePath, 'text/plain', basename($filePath)),
+            'card_id' => $cardId,
+        ],
+        CURLOPT_COOKIEFILE => $cookie ?: $cookieFile,
+        CURLOPT_COOKIEJAR => $cookie ?: $cookieFile,
+    ]);
+    $headers = [];
+    if ($csrf) $headers[] = "X-CSRF-Token: $csrf";
+    if ($headers) curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    $body = substr($response, $headerSize);
+    curl_close($ch);
+
+    return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
+}
+
 function assert_eq($expected, $actual, string $msg): void {
     global $passed, $failed;
     if ($expected === $actual) {
@@ -1148,6 +1177,28 @@ assert_eq(403, $httpCode, 'POST with wrong CSRF token rejected');
 // POST with valid CSRF token
 $r = req('create_project', ['name' => 'CSRF valid test'], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'POST with valid CSRF token accepted');
+
+// ─── SECURITY: ATTACHMENT CSRF ───────────────────────────
+section('Attachment CSRF');
+
+$tmpFile = tempnam(sys_get_temp_dir(), 'kanban_att_');
+file_put_contents($tmpFile, 'test attachment content');
+
+$r = req('create_card', ['column_id' => $colId, 'title' => 'Attachment test card'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create card for attachment test');
+$attCardId = $r['body']['id'];
+
+$r = reqUpload('upload_attachment', $tmpFile, $attCardId);
+assert_eq(403, $r['status'], 'upload attachment without CSRF token rejected');
+
+$r = reqUpload('upload_attachment', $tmpFile, $attCardId, 'badsigtok');
+assert_eq(403, $r['status'], 'upload attachment with wrong CSRF token rejected');
+
+$r = reqUpload('upload_attachment', $tmpFile, $attCardId, $adminCsrf);
+assert_eq(200, $r['status'], 'upload attachment with valid CSRF token accepted');
+assert_true(!empty($r['body']['id']), 'upload returns attachment id');
+
+@unlink($tmpFile);
 
 // ─── CLEANUP ─────────────────────────────────────────────
 @unlink($memberCookie2);
