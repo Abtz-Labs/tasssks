@@ -1259,6 +1259,8 @@ assert_true(str_contains($html, '_quillToMarkdown('), 'Quill-to-Markdown helper 
 assert_true(str_contains($html, 'new TurndownService('), 'TurndownService instantiated');
 assert_true(str_contains($html, 'DividerBlot'), 'Custom HR blot registered');
 assert_true(str_contains($html, 'QUILL_TOOLBAR'), 'Toolbar config defined');
+assert_true(str_contains($html, 'coerceOlToUl'), 'OL-to-UL coercion active');
+assert_true(str_contains($html, 'forcedBullet'), 'Turndown forces OL to bullets');
 
 // marked.js configured for target="_blank"
 assert_true(str_contains($html, 'target="_blank"') || str_contains($html, "target=\"_blank\""), 'marked.js link renderer adds target=_blank');
@@ -1281,6 +1283,11 @@ assert_true(str_contains($html, 'data-raw'), 'Comments store raw markdown in dat
 // CMD+ENTER submits comment
 assert_true(str_contains($html, 'keydown'), 'keydown handler configured for comment submit');
 assert_true(str_contains($html, 'metaKey'), 'CMD key binding exists');
+
+// Markdown list styling
+assert_true(str_contains($html, '.markdown-body ol'), 'CSS styles markdown-body ordered lists');
+assert_true(str_contains($html, '.markdown-body ul'), 'CSS styles markdown-body unordered lists');
+assert_true(str_contains($html, '.markdown-body li'), 'CSS styles markdown-body list items');
 
 // ─── API TOKENS ─────────────────────────────────────────
 section('API Tokens');

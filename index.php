@@ -3457,6 +3457,10 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 
 .markdown-body { font-size: 14px; line-height: 1.6; }
 .markdown-body p { margin-bottom: 8px; }
+.markdown-body ol, .markdown-body ul { padding-left: 24px; margin-bottom: 8px; }
+.markdown-body ol { list-style-type: decimal; }
+.markdown-body ul { list-style-type: disc; }
+.markdown-body li { margin-bottom: 4px; }
 .markdown-body code { background: var(--surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 13px; }
 .markdown-body pre { background: var(--surface-hover); padding: 12px; border-radius: var(--radius); overflow-x: auto; margin-bottom: 8px; }
 .markdown-body pre code { background: none; padding: 0; }
@@ -4087,12 +4091,15 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 <script>
 let CSRF_TOKEN = '<?= $_SESSION['csrf_token'] ?>';
 
-// Configure marked.js: links open in new tab
+// Configure marked.js: links open in new tab, force all lists to bullets
 marked.use({
     renderer: {
         link({ href, title, text }) {
             const titleAttr = title ? ` title="${title}"` : '';
             return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
+        },
+        list(body) {
+            return '<ul>' + body + '</ul>\n';
         }
     }
 });
@@ -4100,6 +4107,16 @@ marked.use({
 // Turndown service for HTML → Markdown conversion
 const _turndown = new TurndownService({ headingStyle: 'atx', hr: '---', bulletListMarker: '-', codeBlockStyle: 'fenced' });
 _turndown.use(turndownPluginGfm.gfm);
+_turndown.addRule('forcedBullet', {
+    filter: 'ol',
+    replacement: function (content, node) {
+        const items = [];
+        node.querySelectorAll(':scope > li').forEach(li => {
+            items.push('- ' + li.textContent.trim());
+        });
+        return '\n' + items.join('\n') + '\n';
+    }
+});
 
 // Custom Quill blot for horizontal rule
 const BlockEmbed = Quill.import('blots/block/embed');
@@ -4116,8 +4133,21 @@ class MarkdownShortcuts {
             if (source !== 'user') return;
             const lastOp = delta.ops?.[delta.ops.length - 1];
             if (!lastOp?.insert || typeof lastOp.insert !== 'string') return;
-            setTimeout(() => this.check(), 0);
+            setTimeout(() => {
+                this.coerceOlToUl();
+                this.check();
+            }, 0);
         });
+    }
+
+    coerceOlToUl() {
+        const lines = this.quill.getLines();
+        for (const line of lines) {
+            if (line.formats().list === 'ordered') {
+                const idx = this.quill.getIndex(line);
+                this.quill.formatLine(idx, 1, 'list', 'bullet');
+            }
+        }
     }
 
     check() {
@@ -4137,13 +4167,9 @@ class MarkdownShortcuts {
                 return;
             }
             if (prefix === '-' || prefix === '*') {
+                this.quill.formatLine(lineStart, 1, 'list', false);
                 this.quill.deleteText(lineStart, text.length);
                 this.quill.formatLine(lineStart, 1, 'list', 'bullet');
-                return;
-            }
-            if (/^\d+\.$/.test(prefix)) {
-                this.quill.deleteText(lineStart, text.length);
-                this.quill.formatLine(lineStart, 1, 'list', 'ordered');
                 return;
             }
         }
@@ -4186,7 +4212,7 @@ Quill.register('modules/markdownShortcuts', MarkdownShortcuts);
 
 const QUILL_TOOLBAR = [
     ['bold', 'italic', 'underline', 'strike'],
-    [{ list: 'bullet' }, { list: 'ordered' }]
+    [{ list: 'bullet' }]
 ];
 
 function _initQuill(selector, opts = {}) {
