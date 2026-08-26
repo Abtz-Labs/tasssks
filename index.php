@@ -27,7 +27,7 @@ if (php_sapi_name() === 'cli-server') {
 // ============================================================================
 
 define('APP_NAME', 'Tasssks');
-define('APP_VERSION', '0.1.0');
+define('APP_VERSION', '0.1.1');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', 10 * 1024 * 1024); // 10MB
@@ -5112,22 +5112,31 @@ const App = {
     // COMMENTS
     loadComments(cardId) {
         this.api('list_comments', { card_id: cardId }).done(comments => {
-            const currentAuthor = this.isGuest ? this.guestName : (this.user?.name || 'Unknown');
-            const html = comments.length ? comments.map(c => {
-                const isOwn = c.author_name === currentAuthor;
-                return `<div class="comment">
-                    <div class="comment-header">
-                        <span class="comment-author">${this.esc(c.author_name)}</span>
-                        <span class="flex-center gap-2">
-                            ${isOwn ? `<button class="btn btn-ghost btn-sm btn-comment" onclick="App.editComment(${c.id},${cardId})">Edit</button>
-                            <button class="btn btn-ghost btn-sm btn-comment-danger" onclick="App.deleteComment(${c.id},${cardId})">Delete</button>` : ''}
-                            <span class="comment-date">${c.created_at}</span>
-                        </span>
-                    </div>
-                    <div class="comment-body markdown-body" data-raw="${encodeURIComponent(c.content)}">${DOMPurify.sanitize(marked.parse(c.content), { ADD_ATTR: ['target'] })}</div>
-                </div>`;
-            }).join('') : '<p class="text-no-comments">No comments yet.</p>';
-            $('#card-comments').html(html);
+            try {
+                const currentAuthor = this.isGuest ? this.guestName : (this.user?.name || 'Unknown');
+                const html = comments.length ? comments.map(c => {
+                    const isOwn = c.author_name === currentAuthor;
+                    const safeContent = c.content || '';
+                    const rendered = DOMPurify.sanitize(marked.parse(safeContent), { ADD_ATTR: ['target'] });
+                    return `<div class="comment">
+                        <div class="comment-header">
+                            <span class="comment-author">${this.esc(c.author_name)}</span>
+                            <span class="flex-center gap-2">
+                                ${isOwn ? `<button class="btn btn-ghost btn-sm btn-comment" onclick="App.editComment(${c.id},${cardId})">Edit</button>
+                                <button class="btn btn-ghost btn-sm btn-comment-danger" onclick="App.deleteComment(${c.id},${cardId})">Delete</button>` : ''}
+                                <span class="comment-date">${c.created_at}</span>
+                            </span>
+                        </div>
+                        <div class="comment-body markdown-body" data-raw="${encodeURIComponent(safeContent)}">${rendered}</div>
+                    </div>`;
+                }).join('') : '<p class="text-no-comments">No comments yet.</p>';
+                $('#card-comments').html(html);
+            } catch (e) {
+                console.error('Failed to render comments:', e);
+                $('#card-comments').html('<p class="text-no-comments">Failed to load comments.</p>');
+            }
+        }).fail(() => {
+            $('#card-comments').html('<p class="text-no-comments">Failed to load comments.</p>');
         });
     },
 
@@ -6260,7 +6269,7 @@ const App = {
     loadProjectWatchState() {
         if (!this.currentProject) return;
         this.api('list_watchers', { project_id: this.currentProject.id }).done(watchers => {
-            const watching = watchers.some(w => w.user_id == this.user.id);
+            const watching = this.user && watchers.some(w => w.user_id == this.user.id);
             const count = watchers.length;
             this._projectWatching = watching;
             $('#project-watch-btn').html(watching

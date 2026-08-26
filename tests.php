@@ -323,6 +323,42 @@ assert_eq(200, $r['status'], 'member can edit own comment');
 $r = req('update_comment', ['id' => $memberCommentId, 'content' => 'Admin edit'], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'admin can edit any comment');
 
+// list_comments returns comments for a card
+$r = req('list_comments', ['card_id' => $commentCardId]);
+assert_eq(200, $r['status'], 'list_comments returns 200');
+assert_true(is_array($r['body']), 'list_comments returns an array');
+assert_true(count($r['body']) >= 2, 'list_comments returns created comments');
+
+// list_comments returns empty array for card with no comments
+$emptyCard = req('create_card', ['column_id' => $colId, 'title' => 'No comments card'], 'POST', $adminCsrf);
+$r = req('list_comments', ['card_id' => $emptyCard['body']['id']]);
+assert_eq(200, $r['status'], 'list_comments returns 200 for empty card');
+assert_eq(0, count($r['body']), 'list_comments returns empty array for card with no comments');
+
+// list_comments returns 400 for missing card_id
+$r = req('list_comments', []);
+assert_eq(400, $r['status'], 'list_comments returns 400 for missing card_id');
+
+// list_comments returns 404 for non-existent card
+$r = req('list_comments', ['card_id' => 99999]);
+assert_eq(404, $r['status'], 'list_comments returns 404 for non-existent card');
+
+// list_comments returns comments with expected fields
+$r = req('list_comments', ['card_id' => $commentCardId]);
+assert_true(count($r['body']) > 0, 'list_comments returns at least one comment');
+$first = $r['body'][0];
+assert_true(isset($first['id']), 'comment has id field');
+assert_true(isset($first['card_id']), 'comment has card_id field');
+assert_true(isset($first['author_name']), 'comment has author_name field');
+assert_true(isset($first['content']), 'comment has content field');
+assert_true(isset($first['created_at']), 'comment has created_at field');
+
+// delete_comment works
+$r = req('delete_comment', ['id' => $adminCommentId], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'admin can delete comment');
+$r = req('list_comments', ['card_id' => $commentCardId]);
+assert_true(count($r['body']) < 2, 'comment was deleted');
+
 // ─── ACCOUNT ─────────────────────────────────────────────
 section('Account');
 
@@ -1534,7 +1570,7 @@ section('Updates');
 // auth_status returns version field
 $r = req('auth_status');
 assert_true(isset($r['body']['version']), 'auth_status returns version field');
-assert_eq('0.1.0', $r['body']['version'], 'version matches expected value');
+assert_eq('0.1.1', $r['body']['version'], 'version matches expected value');
 
 // auth_status returns update_available field
 assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');
@@ -1713,6 +1749,15 @@ assert_true(!str_contains($src, "selectTagColor(el, color) {\n") || !str_contain
 // formatDate helper exists and uses Intl.DateTimeFormat
 assert_true(str_contains($src, 'formatDate('), 'formatDate helper defined');
 assert_true(str_contains($src, 'Intl.DateTimeFormat'), 'formatDate uses Intl.DateTimeFormat');
+
+// loadComments error handling prevents stuck "Loading..." state
+assert_true(str_contains($src, 'loadComments(cardId)'), 'loadComments function defined');
+assert_true(str_contains($src, "catch (e)") && str_contains($src, 'Failed to load comments'), 'loadComments has try/catch with fallback message');
+assert_true(str_contains($src, '.fail(()') && str_contains($src, 'Failed to load comments'), 'loadComments has .fail() handler');
+assert_true(str_contains($src, 'safeContent') && str_contains($src, "c.content || ''"), 'loadComments null-safes comment content');
+
+// loadProjectWatchState null-user guard prevents crash
+assert_true(str_contains($src, 'this.user && watchers.some'), 'loadProjectWatchState null-checks this.user');
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
