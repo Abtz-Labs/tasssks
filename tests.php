@@ -359,6 +359,29 @@ assert_eq(200, $r['status'], 'admin can delete comment');
 $r = req('list_comments', ['card_id' => $commentCardId]);
 assert_true(count($r['body']) < 2, 'comment was deleted');
 
+// list_cards returns comment_count
+$r = req('list_cards', ['project_id' => $adminProjectId]);
+assert_eq(200, $r['status'], 'list_cards for comment_count check');
+$commentCard = null;
+foreach ($r['body'] as $c) { if ($c['id'] == $commentCardId) { $commentCard = $c; break; } }
+assert_true($commentCard !== null, 'comment card found in list_cards');
+assert_true(array_key_exists('comment_count', $commentCard), 'list_cards returns comment_count field');
+assert_eq(1, (int) $commentCard['comment_count'], 'comment_count reflects remaining comments');
+
+// unread_counts excludes own comments
+$r = req('create_card', ['column_id' => $colId, 'title' => 'Unread test card'], 'POST', $adminCsrf);
+$unreadCardId = $r['body']['id'];
+$r = req('create_comment', ['card_id' => $unreadCardId, 'content' => 'Admin own comment'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'admin comments on unread card');
+$r = req('unread_counts', ['project_id' => $adminProjectId]);
+assert_eq(200, $r['status'], 'unread_counts succeeds');
+assert_eq(0, (int) ($r['body'][$unreadCardId] ?? 0), 'own comment does not count as unread');
+$r = req('create_comment', ['card_id' => $unreadCardId, 'content' => 'Member comment'], 'POST', $memberCsrf, $memberCookie);
+assert_eq(200, $r['status'], 'member comments on unread card');
+$r = req('unread_counts', ['project_id' => $adminProjectId]);
+assert_eq(200, $r['status'], 'unread_counts after other comment');
+assert_eq(1, (int) ($r['body'][$unreadCardId] ?? 0), 'other user comment counts as unread');
+
 // ─── ACCOUNT ─────────────────────────────────────────────
 section('Account');
 
@@ -1240,6 +1263,8 @@ assert_true(str_contains($html, 'QUILL_TOOLBAR'), 'Toolbar config defined');
 // marked.js configured for target="_blank"
 assert_true(str_contains($html, 'target="_blank"') || str_contains($html, "target=\"_blank\""), 'marked.js link renderer adds target=_blank');
 assert_true(str_contains($html, 'noopener noreferrer'), 'Links get rel=noopener noreferrer');
+assert_true(preg_match('/link\s*\(\s*\{[^}]*\btext\b/', $html), 'marked.js link renderer uses v12 text param (not tokens)');
+assert_true(!str_contains($html, 'parseInline'), 'marked.js renderer does not call removed parseInline');
 
 // Editor containers (Quill mounts on divs, not textareas)
 assert_true(str_contains($html, 'id="new-card-desc"'), 'New card description editor container exists');
@@ -1570,7 +1595,7 @@ section('Updates');
 // auth_status returns version field
 $r = req('auth_status');
 assert_true(isset($r['body']['version']), 'auth_status returns version field');
-assert_eq('0.1.1', $r['body']['version'], 'version matches expected value');
+assert_eq('0.1.0', $r['body']['version'], 'version matches expected value');
 
 // auth_status returns update_available field
 assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');

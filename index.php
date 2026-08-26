@@ -27,7 +27,7 @@ if (php_sapi_name() === 'cli-server') {
 // ============================================================================
 
 define('APP_NAME', 'Tasssks');
-define('APP_VERSION', '0.1.1');
+define('APP_VERSION', '0.1.0');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', 10 * 1024 * 1024); // 10MB
@@ -1869,9 +1869,10 @@ function apiUnreadCounts(): void {
         LEFT JOIN last_seen ls ON ls.user_id = ? AND ls.card_id = c.id
         WHERE col.project_id = ?
         AND (ls.seen_at IS NULL OR cm.created_at > ls.seen_at)
+        AND (cm.user_id IS NULL OR cm.user_id != ?)
         GROUP BY c.id
     ");
-    $stmt->execute([$user['id'], $projectId]);
+    $stmt->execute([$user['id'], $projectId, $user['id']]);
     $result = [];
     foreach ($stmt->fetchAll() as $row) {
         $result[$row['card_id']] = (int) $row['unread'];
@@ -4089,8 +4090,7 @@ let CSRF_TOKEN = '<?= $_SESSION['csrf_token'] ?>';
 // Configure marked.js: links open in new tab
 marked.use({
     renderer: {
-        link({ href, title, tokens }) {
-            const text = this.parser.parseInline(tokens);
+        link({ href, title, text }) {
             const titleAttr = title ? ` title="${title}"` : '';
             return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
         }
@@ -5147,6 +5147,7 @@ const App = {
         this.api('create_comment', { card_id: cardId, content }, 'POST').done(() => {
             this._quillComment.setText('');
             this.loadComments(cardId);
+            this.refreshBoard();
         });
     },
 
@@ -5178,7 +5179,7 @@ const App = {
 
     deleteComment(commentId, cardId) {
         this.confirmAction('Delete this comment?', () => {
-            this.api('delete_comment', { id: commentId }, 'POST').done(() => this.openCard(cardId));
+            this.api('delete_comment', { id: commentId }, 'POST').done(() => { this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200); });
         });
     },
 
