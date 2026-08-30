@@ -4896,7 +4896,12 @@ const App = {
         const title = $('#new-card-title').val().trim();
         if (!title) return;
         const description = this._quill ? _quillToMarkdown(this._quill) : '';
-        this.api('create_card', { column_id: columnId, title, description }, 'POST').done(() => { this.closeModal(); this.refreshBoard(); });
+        this.api('create_card', { column_id: columnId, title, description }, 'POST').done(res => {
+            const cardId = res.id;
+            this.closeModal();
+            this.refreshBoard();
+            setTimeout(() => this.openCard(cardId), 100);
+        });
     },
 
     openCard(cardId) {
