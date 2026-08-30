@@ -1855,6 +1855,11 @@ assert_true(str_contains($src, 'safeContent') && str_contains($src, "c.content |
 // loadProjectWatchState null-user guard prevents crash
 assert_true(str_contains($src, 'this.user && watchers.some'), 'loadProjectWatchState null-checks this.user');
 
+// Footer must not overlap content on long pages (flex layout, not fixed)
+assert_true(str_contains($src, "flex-direction: column") && str_contains($src, "min-height: 100vh"), 'Body uses flex column with min-height 100vh');
+assert_true(!str_contains($src, "position: fixed") || !preg_match('/\.app-footer\s*\{[^}]*position\s*:\s*fixed/', $src), 'Footer is not position:fixed');
+assert_true(str_contains($src, "margin-top: auto"), 'Footer uses margin-top:auto to stay at bottom');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
 if ($failed === 0) {

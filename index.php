@@ -3084,6 +3084,8 @@ body {
     color: var(--text);
     line-height: 1.5;
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Header */
@@ -3853,10 +3855,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 
 /* Footer */
 .app-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    margin-top: auto;
     text-align: center;
     padding: 8px 24px;
     font-size: 12px;
