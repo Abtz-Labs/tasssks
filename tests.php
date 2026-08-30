@@ -1935,6 +1935,10 @@ assert_true(str_contains($src, 'chat_id TEXT') || str_contains($src, "ADD COLUMN
 assert_true(str_contains($src, 'message_template TEXT') || str_contains($src, "ADD COLUMN message_template"), 'message_template column added to project_webhooks');
 assert_true(str_contains($src, '{{event}}') || str_contains($src, '{{project}}'), 'Template variable placeholders supported');
 
+// Card detail: column selector dropdown
+assert_true(str_contains($src, 'moveCardToColumn('), 'moveCardToColumn function defined');
+assert_true(str_contains($src, 'webhook-column') || str_contains($src, 'card-column-select') || str_contains($src, "id=\"card-column"), 'Column selector element exists in card detail');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
 if ($failed === 0) {

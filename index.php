@@ -5129,6 +5129,9 @@ const App = {
             <div class="card-detail-section card-detail-tags">
                 ${tagsHtml}
                 ${!this.isGuest || this.currentProject.guest_can_create_cards ? `<span class="tag tag-add" onclick="App.showTagPicker(${cardId})">+</span>` : ''}
+                ${!this.isGuest ? `<select id="card-column-select" class="btn btn-ghost btn-watch" onchange="App.moveCardToColumn(${cardId}, parseInt(this.value))" style="appearance:auto;padding-right:24px;width:auto;max-width:118px;margin-left:auto;height:30px">
+                    ${this.columns.map(c => `<option value="${c.id}" ${c.id == card.column_id ? 'selected' : ''}>${this.esc(c.name)}</option>`).join('')}
+                </select>` : ''}
             </div>
             <div class="card-detail-section">
                 <h4>Description ${!this.isGuest ? `<button class="btn btn-ghost btn-sm btn-edit-inline" onclick="App.editCardDescription(${cardId})">Edit</button>` : ''}</h4>
@@ -5222,6 +5225,17 @@ const App = {
     saveCardDescription(cardId) {
         const description = this._quill ? _quillToMarkdown(this._quill) : '';
         this.api('update_card', { id: cardId, description }, 'POST').done(() => { this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200); });
+    },
+
+    moveCardToColumn(cardId, newColumnId) {
+        const card = this.cards.find(c => c.id == cardId);
+        if (!card || card.column_id == newColumnId) return;
+        const colCards = this.cards.filter(c => c.column_id == newColumnId && c.id != cardId);
+        const position = colCards.length;
+        this.api('move_card', { id: cardId, column_id: newColumnId, position }, 'POST').done(() => {
+            this.refreshBoard();
+            setTimeout(() => this.openCard(cardId), 200);
+        });
     },
 
     deleteCard(cardId) {
