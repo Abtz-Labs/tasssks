@@ -1834,6 +1834,11 @@ assert_eq(1, $rawRotateCount, 'recovery key update only appears in rotateRecover
 assert_true(!str_contains($src, 'QUILL_TOOLBAR_FULL'), 'QUILL_TOOLBAR_FULL removed (consolidated)');
 assert_true(!str_contains($src, 'QUILL_TOOLBAR_COMPACT'), 'QUILL_TOOLBAR_COMPACT removed (consolidated)');
 
+// Quill toolbar must not be focusable (sibling query, not ancestor closest)
+assert_true(str_contains($src, "parentNode.querySelector('.ql-toolbar')"), 'Quill toolbar found via sibling query (not closest)');
+assert_true(!str_contains($src, "closest('.ql-toolbar')"), 'Quill toolbar does not use closest (broken for sibling)');
+assert_true(str_contains($src, "toolbar.querySelectorAll('button, select')") && str_contains($src, "tabindex', '-1')"), 'Toolbar children get tabindex=-1 to remove from tab order');
+
 // selectTagColor must not hardcode a specific hidden input ID (bug: project settings uses different ID)
 assert_true(!str_contains($src, "selectTagColor(el, color) {\n") || !str_contains($src, "\$('#new-tag-color').val(color)"), 'selectTagColor does not hardcode new-tag-color input');
 

@@ -4225,6 +4225,11 @@ function _initQuill(selector, opts = {}) {
             markdownShortcuts: true
         }
     });
+    const toolbar = quill.container.parentNode.querySelector('.ql-toolbar');
+    if (toolbar) {
+        toolbar.setAttribute('tabindex', '-1');
+        toolbar.querySelectorAll('button, select').forEach(el => el.setAttribute('tabindex', '-1'));
+    }
     if (opts.html) {
         quill.clipboard.dangerouslyPasteHTML(opts.html);
         quill.setSelection(0, 0);
