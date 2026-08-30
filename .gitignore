@@ -8,5 +8,6 @@
 .server.pid
 
 # Misc
+uploads/
 docs/plans/*.md
 bare.config.json
