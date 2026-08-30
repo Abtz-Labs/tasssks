@@ -5037,7 +5037,7 @@ const App = {
         this.openModal('New Card', `
             <div class="form-group"><label>Title</label><input type="text" id="new-card-title" placeholder="Card title"></div>
             <div class="form-group"><label>Description</label><div class="quill-wrap"><div id="new-card-desc"></div></div></div>
-        `, `<button class="btn btn-primary" onclick="App.createCard(${columnId})">Add Card</button>`);
+        `, `<button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button> <button class="btn btn-primary" onclick="App.createCard(${columnId})">Add Card</button>`);
         setTimeout(() => {
             this._quill = _initQuill('#new-card-desc', { placeholder: 'Optional description...' });
             $('#new-card-title').on('input', function() { _applyReplacements(this); }).focus();
