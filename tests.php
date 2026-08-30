@@ -1860,6 +1860,20 @@ assert_true(str_contains($src, "flex-direction: column") && str_contains($src, "
 assert_true(!str_contains($src, "position: fixed") || !preg_match('/\.app-footer\s*\{[^}]*position\s*:\s*fixed/', $src), 'Footer is not position:fixed');
 assert_true(str_contains($src, "margin-top: auto"), 'Footer uses margin-top:auto to stay at bottom');
 
+// Text replacements: typographic shortcuts
+assert_true(str_contains($src, 'TEXT_REPLACEMENTS'), 'TEXT_REPLACEMENTS map defined');
+assert_true(str_contains($src, "':check:'") && str_contains($src, "'\\u2705'"), ':check: maps to checkmark');
+assert_true(str_contains($src, "':cross:'") && str_contains($src, "'\\u274C'"), ':cross: maps to cross');
+assert_true(str_contains($src, "':x:'") && str_contains($src, "'\\u274C'"), ':x: maps to cross');
+assert_true(str_contains($src, "'->'") && str_contains($src, "'\\u2192'"), "-> maps to right arrow");
+assert_true(str_contains($src, "':arrow-right:'") && str_contains($src, "'\\u2192'"), ":arrow-right: maps to right arrow");
+assert_true(str_contains($src, "'--'") && str_contains($src, "'\\u2014'"), "-- maps to em dash");
+assert_true(str_contains($src, "':emdash:'") && str_contains($src, "'\\u2014'"), ":emdash: maps to em dash");
+assert_true(str_contains($src, "'<-'") && str_contains($src, "'\\u2190'"), "<- maps to left arrow");
+assert_true(str_contains($src, '_applyReplacements('), '_applyReplacements helper defined');
+assert_true(str_contains($src, '_initQuillReplacements('), '_initQuillReplacements helper defined');
+assert_true(str_contains($src, 'quill.getText()'), 'Quill handler checks full editor text (not just delta fragment)');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
 if ($failed === 0) {

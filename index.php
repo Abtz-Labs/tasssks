@@ -4229,6 +4229,7 @@ function _initQuill(selector, opts = {}) {
         toolbar.setAttribute('tabindex', '-1');
         toolbar.querySelectorAll('button, select').forEach(el => el.setAttribute('tabindex', '-1'));
     }
+    _initQuillReplacements(quill);
     if (opts.html) {
         quill.clipboard.dangerouslyPasteHTML(opts.html);
         quill.setSelection(0, 0);
@@ -4240,6 +4241,52 @@ function _quillToMarkdown(quill) {
     const html = quill.root.innerHTML;
     if (!html || html === '<p><br></p>') return '';
     return _turndown.turndown(html);
+}
+
+const TEXT_REPLACEMENTS = {
+    ':check:': '\u2705',
+    ':cross:': '\u274C',
+    ':x:': '\u274C',
+    ':arrow-right:': '\u2192',
+    ':emdash:': '\u2014',
+    '->': '\u2192',
+    '<-': '\u2190',
+    '--': '\u2014'
+};
+
+const _replacementKeys = Object.keys(TEXT_REPLACEMENTS).sort((a, b) => b.length - a.length);
+
+function _applyReplacements(input) {
+    let v = input.value;
+    let changed = false;
+    for (const key of _replacementKeys) {
+        if (v.endsWith(key)) {
+            v = v.slice(0, -key.length) + TEXT_REPLACEMENTS[key];
+            changed = true;
+        }
+    }
+    if (changed) {
+        const pos = input.selectionStart;
+        input.value = v;
+        input.setSelectionRange(pos, pos);
+    }
+}
+
+function _initQuillReplacements(quill) {
+    quill.on('text-change', () => {
+        const range = quill.getSelection();
+        if (!range) return;
+        const fullText = quill.getText();
+        for (const key of _replacementKeys) {
+            if (fullText.slice(0, range.index).endsWith(key)) {
+                const idx = range.index - key.length;
+                quill.deleteText(idx, key.length);
+                quill.insertText(idx, TEXT_REPLACEMENTS[key]);
+                quill.setSelection(idx + TEXT_REPLACEMENTS[key].length);
+                return;
+            }
+        }
+    });
 }
 
 const App = {
@@ -4892,7 +4939,7 @@ const App = {
         `, `<button class="btn btn-primary" onclick="App.createCard(${columnId})">Add Card</button>`);
         setTimeout(() => {
             this._quill = _initQuill('#new-card-desc', { placeholder: 'Optional description...' });
-            $('#new-card-title').focus();
+            $('#new-card-title').on('input', function() { _applyReplacements(this); }).focus();
         }, 50);
     },
 
@@ -5045,7 +5092,7 @@ const App = {
             <button class="btn btn-ghost" onclick="App.closeModal();setTimeout(()=>App.openCard(${cardId}),100)">Cancel</button>
             <button class="btn btn-primary" onclick="App.saveCardTitle(${cardId})">Save</button>
         `);
-        setTimeout(() => $('#edit-card-title').focus().select(), 50);
+        setTimeout(() => { $('#edit-card-title').on('input', function() { _applyReplacements(this); }).focus().select(); }, 50);
     },
 
     saveCardTitle(cardId) {
