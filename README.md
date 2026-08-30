@@ -17,6 +17,7 @@ The entire application (backend logic, frontend markup, CSS, and JavaScript) liv
 - Team management with roles (admin and member)
 - Guest access via shareable token links
 - WYSIWYG editor with markdown shortcuts for card descriptions and comments
+- Typographic shortcuts: `:check:` → ✅, `->` → →, `--` → —, etc.
 - Fuzzy search across cards (title and description)
 - Keyboard shortcuts for common actions
 - Comments
@@ -137,7 +138,13 @@ Guests can view time reports if enabled in project settings (Guests tab → "Vie
 
 ### Notifications
 
-**Webhooks** are configured per project (project settings). Supported types: Slack (Incoming Webhook), Telegram (Bot API), and generic JSON POST.
+**Webhooks** are configured per project (project settings → Webhooks tab). Three presets available:
+
+- **Generic JSON** — POST a JSON payload to any HTTP endpoint.
+- **Slack** — POST to a Slack Incoming Webhook URL. Optional message template with variables (`{{event}}`, `{{project}}`, `{{actor}}`, `{{title}}`, `{{timestamp}}`).
+- **Telegram** — configured via Bot Token (from [BotFather](https://t.me/BotFather)) and Chat ID. No URL needed — the app constructs it automatically. Optional message template supported.
+
+Each webhook can be tested, edited, enabled/disabled, or removed. Use the Edit button to change settings and Test to send a sample event.
 
 **Email notifications** require SMTP configuration (App Settings). Choose between immediate delivery or a daily digest summary.
 

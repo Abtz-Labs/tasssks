@@ -589,6 +589,52 @@ $memberCsrf2 = $r['body']['csrf_token'];
 $r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => 'https://evil.com/hook', 'type' => 'generic'], 'POST', $memberCsrf2, $memberCookie2);
 assert_eq(403, $r['status'], 'member cannot add webhook to admin project');
 
+// Webhook UX: create with Telegram fields, update, test
+$r = req('create_webhook', [
+    'project_id' => $adminProjectId,
+    'type' => 'telegram',
+    'bot_token' => '123456:ABC-DEF',
+    'chat_id' => '-1001234567890',
+    'message_template' => '*{{event}}*: {{project}}',
+], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create telegram webhook with bot_token and chat_id');
+$telegramHookId = $r['body']['id'];
+
+$r = req('list_webhooks', ['project_id' => $adminProjectId]);
+assert_eq(1, count($r['body']), 'one webhook after telegram create');
+assert_eq('telegram', $r['body'][0]['type'], 'webhook type is telegram');
+assert_eq('123456:ABC-DEF', $r['body'][0]['bot_token'], 'bot_token stored');
+assert_eq('-1001234567890', $r['body'][0]['chat_id'], 'chat_id stored');
+
+$r = req('update_webhook', [
+    'id' => $telegramHookId,
+    'message_template' => '{{event}} in {{project}}',
+], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'update webhook message_template');
+
+$r = req('list_webhooks', ['project_id' => $adminProjectId]);
+assert_eq('{{event}} in {{project}}', $r['body'][0]['message_template'], 'message_template updated');
+
+$r = req('test_webhook', ['id' => $telegramHookId], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'test webhook succeeds');
+
+$r = req('delete_webhook', ['id' => $telegramHookId], 'POST', $adminCsrf);
+
+// Create webhook with message_template (Slack)
+$r = req('create_webhook', [
+    'project_id' => $adminProjectId,
+    'url' => 'https://hooks.slack.com/test',
+    'type' => 'slack',
+    'message_template' => '*{{event}}*: {{project}}',
+], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create slack webhook with message_template');
+$slackHookId = $r['body']['id'];
+
+$r = req('list_webhooks', ['project_id' => $adminProjectId]);
+assert_eq('*{{event}}*: {{project}}', $r['body'][0]['message_template'], 'slack message_template stored');
+
+$r = req('delete_webhook', ['id' => $slackHookId], 'POST', $adminCsrf);
+
 // ─── WATCHERS ───────────────────────────────────────────
 section('Watchers');
 
@@ -1873,6 +1919,21 @@ assert_true(str_contains($src, "'<-'") && str_contains($src, "'\\u2190'"), "<- m
 assert_true(str_contains($src, '_applyReplacements('), '_applyReplacements helper defined');
 assert_true(str_contains($src, '_initQuillReplacements('), '_initQuillReplacements helper defined');
 assert_true(str_contains($src, 'quill.getText()'), 'Quill handler checks full editor text (not just delta fragment)');
+
+// Webhook UX overhaul: preset-specific fields, edit, test
+assert_true(str_contains($src, 'togglePresetFields()'), 'togglePresetFields function defined');
+assert_true(str_contains($src, 'editWebhook('), 'editWebhook function defined');
+assert_true(str_contains($src, 'testWebhook('), 'testWebhook function defined');
+assert_true(str_contains($src, "webhook-bot-token") && str_contains($src, "webhook-chat-id"), 'Telegram fields (bot-token, chat-id) exist in form');
+assert_true(str_contains($src, "webhook-slack-template"), 'Slack template field exists in form');
+assert_true(str_contains($src, "form-group-hint"), 'form-group-hint CSS class used for setup instructions');
+assert_true(str_contains($src, "update_webhook") && str_contains($src, "test_webhook"), 'update_webhook and test_webhook API routes registered');
+assert_true(str_contains($src, 'apiUpdateWebhook'), 'apiUpdateWebhook function defined');
+assert_true(str_contains($src, 'apiTestWebhook'), 'apiTestWebhook function defined');
+assert_true(str_contains($src, 'bot_token TEXT') || str_contains($src, "ADD COLUMN bot_token"), 'bot_token column added to project_webhooks');
+assert_true(str_contains($src, 'chat_id TEXT') || str_contains($src, "ADD COLUMN chat_id"), 'chat_id column added to project_webhooks');
+assert_true(str_contains($src, 'message_template TEXT') || str_contains($src, "ADD COLUMN message_template"), 'message_template column added to project_webhooks');
+assert_true(str_contains($src, '{{event}}') || str_contains($src, '{{project}}'), 'Template variable placeholders supported');
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";

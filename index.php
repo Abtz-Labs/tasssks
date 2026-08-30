@@ -316,7 +316,21 @@ function migrateDatabase(PDO $db): void {
         }
     }
 
-    $db->exec('PRAGMA user_version = 6');
+    // Version 6 → 7: webhook preset fields
+    if ($version < 7) {
+        $cols = $db->query("PRAGMA table_info(project_webhooks)")->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('bot_token', $cols)) {
+            $db->exec("ALTER TABLE project_webhooks ADD COLUMN bot_token TEXT");
+        }
+        if (!in_array('chat_id', $cols)) {
+            $db->exec("ALTER TABLE project_webhooks ADD COLUMN chat_id TEXT");
+        }
+        if (!in_array('message_template', $cols)) {
+            $db->exec("ALTER TABLE project_webhooks ADD COLUMN message_template TEXT");
+        }
+    }
+
+    $db->exec('PRAGMA user_version = 7');
 }
 
 // ============================================================================
@@ -520,17 +534,40 @@ function dispatchWebhooks(string $projectId, string $eventType, array $payload, 
     $projectName = $project->fetch()['name'] ?? 'Unknown';
 
     foreach ($hooks as $hook) {
-        $body = formatWebhookPayload($hook['type'], $eventType, $payload, $projectName, $actorName);
-        sendWebhook($hook['url'], $body, $hook['type']);
+        $body = formatWebhookPayload($hook['type'], $eventType, $payload, $projectName, $actorName, $hook['bot_token'] ?? null, $hook['chat_id'] ?? null, $hook['message_template'] ?? null);
+        $url = $hook['type'] === 'telegram' && !empty($hook['bot_token'])
+            ? "https://api.telegram.org/bot{$hook['bot_token']}/sendMessage"
+            : $hook['url'];
+        sendWebhook($url, $body, $hook['type']);
     }
 }
 
-function formatWebhookPayload(string $hookType, string $eventType, array $payload, string $projectName, ?string $actorName): string {
+function formatWebhookPayload(string $hookType, string $eventType, array $payload, string $projectName, ?string $actorName, ?string $botToken = null, ?string $chatId = null, ?string $messageTemplate = null): string {
     $text = formatEventText($eventType, $payload, $projectName, $actorName, true);
 
+    $replaceTemplate = function(?string $tpl) use ($text, $eventType, $projectName, $actorName, $payload) {
+        if (!$tpl) return $text;
+        $replacements = [
+            'event' => $eventType,
+            'project' => $projectName,
+            'actor' => $actorName ?? '',
+            'title' => $payload['title'] ?? '',
+            'timestamp' => date('c'),
+        ];
+        return preg_replace_callback('/\{\{\s*(\w+)\s*\}\}/', function($m) use ($replacements) {
+            return $replacements[$m[1]] ?? $m[0];
+        }, $tpl);
+    };
+
     return match ($hookType) {
-        'slack' => json_encode(['text' => $text]),
-        'telegram' => json_encode(['text' => $text, 'parse_mode' => 'HTML']),
+        'slack' => json_encode(['text' => $replaceTemplate($messageTemplate)]),
+        'telegram' => $chatId
+            ? json_encode([
+                'chat_id' => $chatId,
+                'text' => $replaceTemplate($messageTemplate),
+                'parse_mode' => 'HTML',
+            ])
+            : json_encode(['text' => $text, 'parse_mode' => 'HTML']),
         default => json_encode([
             'event' => $eventType,
             'project' => $projectName,
@@ -688,8 +725,10 @@ if ($action) {
         // Webhooks
         'list_webhooks' => apiListWebhooks(),
         'create_webhook' => apiCreateWebhook(),
+        'update_webhook' => apiUpdateWebhook(),
         'delete_webhook' => apiDeleteWebhook(),
         'toggle_webhook' => apiToggleWebhook(),
+        'test_webhook' => apiTestWebhook(),
 
         // Watchers
         'watch' => apiWatch(),
@@ -2113,7 +2152,7 @@ function apiListWebhooks(): void {
     requireOwner($projectId);
 
     $db = getDb();
-    $stmt = $db->prepare("SELECT id, url, type, enabled, created_at FROM project_webhooks WHERE project_id = ? ORDER BY created_at");
+    $stmt = $db->prepare("SELECT id, url, type, enabled, bot_token, chat_id, message_template, created_at FROM project_webhooks WHERE project_id = ? ORDER BY created_at");
     $stmt->execute([$projectId]);
     jsonResponse($stmt->fetchAll());
 }
@@ -2123,16 +2162,27 @@ function apiCreateWebhook(): void {
     $projectId = $input['project_id'] ?? '';
     $url = trim($input['url'] ?? '');
     $type = $input['type'] ?? 'generic';
+    $botToken = trim($input['bot_token'] ?? '');
+    $chatId = trim($input['chat_id'] ?? '');
+    $messageTemplate = $input['message_template'] ?? null;
 
-    if (!$projectId || !$url) jsonResponse(['error' => 'Missing fields'], 400);
+    if (!$projectId) jsonResponse(['error' => 'Missing fields'], 400);
     if (!in_array($type, ['generic', 'slack', 'telegram'])) jsonResponse(['error' => 'Invalid type'], 400);
-    if (!filter_var($url, FILTER_VALIDATE_URL)) jsonResponse(['error' => 'Invalid URL'], 400);
+
+    if ($type === 'telegram') {
+        if (!$botToken) jsonResponse(['error' => 'Bot token is required for Telegram'], 400);
+        if (!$chatId) jsonResponse(['error' => 'Chat ID is required for Telegram'], 400);
+        $url = "https://api.telegram.org/bot{$botToken}/sendMessage";
+    } else {
+        if (!$url) jsonResponse(['error' => 'URL is required'], 400);
+        if (!filter_var($url, FILTER_VALIDATE_URL)) jsonResponse(['error' => 'Invalid URL'], 400);
+    }
 
     requireOwner($projectId);
 
     $db = getDb();
-    $stmt = $db->prepare("INSERT INTO project_webhooks (project_id, url, type) VALUES (?, ?, ?)");
-    $stmt->execute([$projectId, $url, $type]);
+    $stmt = $db->prepare("INSERT INTO project_webhooks (project_id, url, type, bot_token, chat_id, message_template) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$projectId, $url, $type, $botToken ?: null, $chatId ?: null, $messageTemplate]);
     jsonResponse(['id' => (int) $db->lastInsertId()]);
 }
 
@@ -2165,6 +2215,55 @@ function apiToggleWebhook(): void {
 
     requireOwner($row['project_id']);
     $db->prepare("UPDATE project_webhooks SET enabled = ? WHERE id = ?")->execute([!$row['enabled'] ? 1 : 0, $id]);
+    jsonResponse(['ok' => true]);
+}
+
+function apiUpdateWebhook(): void {
+    $input = getInput();
+    $id = (int) ($input['id'] ?? 0);
+    if (!$id) jsonResponse(['error' => 'Missing id'], 400);
+
+    $db = getDb();
+    $hook = $db->prepare("SELECT project_id FROM project_webhooks WHERE id = ?");
+    $hook->execute([$id]);
+    $row = $hook->fetch();
+    if (!$row) jsonResponse(['error' => 'Not found'], 404);
+
+    requireOwner($row['project_id']);
+
+    $fields = [];
+    $params = [];
+    foreach (['url', 'type', 'bot_token', 'chat_id', 'message_template'] as $f) {
+        if (array_key_exists($f, $input)) {
+            $fields[] = "$f = ?";
+            $params[] = $input[$f] ?: null;
+        }
+    }
+    if (!$fields) jsonResponse(['error' => 'No fields to update'], 400);
+
+    $params[] = $id;
+    $db->prepare("UPDATE project_webhooks SET " . implode(', ', $fields) . " WHERE id = ?")->execute($params);
+    jsonResponse(['ok' => true]);
+}
+
+function apiTestWebhook(): void {
+    $input = getInput();
+    $id = (int) ($input['id'] ?? 0);
+    if (!$id) jsonResponse(['error' => 'Missing id'], 400);
+
+    $db = getDb();
+    $hook = $db->prepare("SELECT * FROM project_webhooks WHERE id = ?");
+    $hook->execute([$id]);
+    $row = $hook->fetch();
+    if (!$row) jsonResponse(['error' => 'Not found'], 404);
+
+    requireOwner($row['project_id']);
+
+    $body = formatWebhookPayload($row['type'], 'test_event', ['title' => 'Test card'], 'Test Project', 'Test', $row['bot_token'], $row['chat_id'], $row['message_template']);
+    $url = $row['type'] === 'telegram' && !empty($row['bot_token'])
+        ? "https://api.telegram.org/bot{$row['bot_token']}/sendMessage"
+        : $row['url'];
+    sendWebhook($url, $body, $row['type']);
     jsonResponse(['ok' => true]);
 }
 
@@ -3195,6 +3294,8 @@ textarea { resize: vertical; min-height: 100px; height: auto; padding: 10px 12px
 
 label { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; }
 .form-group { margin-bottom: 16px; }
+.form-group-hint { font-size: 12px; color: var(--text-light); margin-top: 4px; }
+.form-group-hint a { color: var(--primary); }
 
 /* Inline field (input + button same height, no gap) */
 .field-addons {
@@ -6078,16 +6179,22 @@ const App = {
                 </div>`;
             }).join('') || '<p class="text-no-comments">No guests yet.</p>';
 
-            const webhookRows = webhooks.map(w => `<div class="row-card">
-                <div class="overflow-hidden">
-                    <strong class="text-sm text-uppercase text-light">${this.esc(w.type)}</strong>
-                    <div class="text-sm text word-break">${this.esc(w.url)}</div>
-                </div>
-                <div class="flex-center gap-sm flex-shrink-0">
-                    <button class="btn btn-ghost btn-sm" onclick="App.toggleWebhook(${w.id})">${w.enabled ? 'Disable' : 'Enable'}</button>
-                    <button class="btn btn-danger btn-sm" onclick="App.deleteWebhook(${w.id})">Remove</button>
-                </div>
-            </div>`).join('') || '<p class="text-no-comments">No webhooks configured.</p>';
+            const webhookRows = webhooks.map(w => {
+                const display = w.type === 'telegram' ? `Chat: ${this.esc(w.chat_id || '')}` : this.esc(w.url);
+                return `<div class="row-card">
+                    <div class="overflow-hidden">
+                        <strong class="text-sm text-uppercase text-light">${this.esc(w.type)}</strong>
+                        <div class="text-sm text word-break">${display}</div>
+                        ${w.message_template ? `<div class="text-xs text-light">Template: ${this.esc(w.message_template)}</div>` : ''}
+                    </div>
+                    <div class="flex-center gap-sm flex-shrink-0">
+                        <button class="btn btn-ghost btn-sm" onclick="App.testWebhook(${w.id}, this)">Test</button>
+                        <button class="btn btn-ghost btn-sm" onclick="App.editWebhook(${w.id})">Edit</button>
+                        <button class="btn btn-ghost btn-sm" onclick="App.toggleWebhook(${w.id})">${w.enabled ? 'Disable' : 'Enable'}</button>
+                        <button class="btn btn-danger btn-sm" onclick="App.deleteWebhook(${w.id})">Remove</button>
+                    </div>
+                </div>`;
+            }).join('') || '<p class="text-no-comments">No webhooks configured.</p>';
 
             const guestCreate = this.currentProject.guest_can_create_cards ? 'checked' : '';
             const guestSort = this.currentProject.guest_can_sort_cards ? 'checked' : '';
@@ -6140,15 +6247,49 @@ const App = {
                     <div class="card-detail-section"><h4>Webhooks <a href="#" onclick="event.preventDefault();App.showWebhookPayloads()" class="text-xs font-normal ml-2">View payload format</a></h4>
                         <p class="text-sm text-light mb-2">Receive notifications via Slack, Telegram, or any HTTP endpoint.</p>
                         ${webhookRows}
-                        <div class="tag-picker mt-2">
-                            <select id="webhook-type" class="select-sm">
-                                <option value="generic">Generic</option>
-                                <option value="slack">Slack</option>
-                                <option value="telegram">Telegram</option>
-                            </select>
-                            <div class="field-addons flex-1">
-                                <input type="text" id="webhook-url" placeholder="https://hooks.slack.com/...">
-                                <button class="btn btn-primary" onclick="App.createWebhook()">Add</button>
+                        <div id="webhook-form" class="mt-2" style="padding:12px;background:var(--bg);border-radius:var(--radius)">
+                            <input type="hidden" id="webhook-edit-id">
+                            <div class="form-group">
+                                <label class="text-sm text-light">Type</label>
+                                <select id="webhook-type" class="select-sm" onchange="App.togglePresetFields()">
+                                    <option value="generic">Generic JSON</option>
+                                    <option value="slack">Slack</option>
+                                    <option value="telegram">Telegram</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="webhook-url-group">
+                                <label class="text-sm text-light">URL</label>
+                                <input type="text" id="webhook-url" placeholder="https://example.com/webhook">
+                                <div class="form-group-hint" id="slack-hint" style="display:none">Create a webhook at <a href="https://api.slack.com/apps" target="_blank" rel="noopener">api.slack.com/apps</a></div>
+                            </div>
+                            <div id="telegram-fields" class="hidden">
+                                <div class="form-group">
+                                    <label class="text-sm text-light">Bot Token</label>
+                                    <input type="text" id="webhook-bot-token" placeholder="123456:ABC-DEF...">
+                                    <div class="form-group-hint">Get a token from <a href="https://t.me/BotFather" target="_blank" rel="noopener">t.me/BotFather</a></div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="text-sm text-light">Chat ID</label>
+                                    <input type="text" id="webhook-chat-id" placeholder="-1001234567890">
+                                </div>
+                            </div>
+                            <div id="slack-template" class="hidden">
+                                <div class="form-group">
+                                    <label class="text-sm text-light">Message Template <span style="opacity:0.5">(optional)</span></label>
+                                    <textarea id="webhook-slack-template" rows="2" placeholder="*{{event}}*: {{project}} — {{title}}"></textarea>
+                                    <div class="form-group-hint">Supports: {{event}}, {{project}}, {{actor}}, {{title}}, {{timestamp}}</div>
+                                </div>
+                            </div>
+                            <div id="telegram-template" class="hidden">
+                                <div class="form-group">
+                                    <label class="text-sm text-light">Message Template <span style="opacity:0.5">(optional)</span></label>
+                                    <textarea id="webhook-telegram-template" rows="2" placeholder="&lt;b&gt;{{event}}&lt;/b&gt;: {{project}} — {{title}}"></textarea>
+                                    <div class="form-group-hint">Supports: {{event}}, {{project}}, {{actor}}, {{title}}, {{timestamp}}</div>
+                                </div>
+                            </div>
+                            <div class="flex-center gap-sm">
+                                <button class="btn btn-primary btn-sm" onclick="App.saveWebhook()">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="App.cancelWebhook()">Cancel</button>
                             </div>
                         </div>
                     </div>
@@ -6240,12 +6381,86 @@ const App = {
     },
     deleteGuest(id) { this.api('delete_guest', { id }, 'POST').done(() => this.showSettings('guests')); },
 
-    createWebhook() {
-        const url = $('#webhook-url').val().trim();
+    togglePresetFields() {
         const type = $('#webhook-type').val();
-        if (!url) return;
-        this.api('create_webhook', { project_id: this.currentProject.id, url, type }, 'POST').done(() => this.showSettings('webhooks'));
+        const isTelegram = type === 'telegram';
+        const isSlack = type === 'slack';
+        $('#webhook-url-group').toggleClass('hidden', isTelegram);
+        $('#telegram-fields').toggleClass('hidden', !isTelegram);
+        $('#slack-template').toggleClass('hidden', !isSlack);
+        $('#telegram-template').toggleClass('hidden', !isTelegram);
+        $('#slack-hint').toggle(isSlack);
+        if (isSlack) $('#webhook-url').attr('placeholder', 'https://hooks.slack.com/services/T00000000/B00000000/XXXX');
+        else if (isTelegram) { /* no URL needed */ }
+        else $('#webhook-url').attr('placeholder', 'https://example.com/webhook');
     },
+
+    cancelWebhook() {
+        $('#webhook-edit-id').val('');
+        $('#webhook-type').val('generic');
+        $('#webhook-url').val('');
+        $('#webhook-bot-token').val('');
+        $('#webhook-chat-id').val('');
+        $('#webhook-slack-template').val('');
+        $('#webhook-telegram-template').val('');
+        this.togglePresetFields();
+    },
+
+    saveWebhook() {
+        const editId = $('#webhook-edit-id').val();
+        const type = $('#webhook-type').val();
+        const data = { project_id: this.currentProject.id, type };
+        if (type === 'telegram') {
+            data.bot_token = $('#webhook-bot-token').val().trim();
+            data.chat_id = $('#webhook-chat-id').val().trim();
+            data.message_template = $('#webhook-telegram-template').val().trim() || null;
+            if (!data.bot_token || !data.chat_id) return;
+        } else {
+            data.url = $('#webhook-url').val().trim();
+            if (!data.url) return;
+            if (type === 'slack') {
+                data.message_template = $('#webhook-slack-template').val().trim() || null;
+            }
+        }
+        if (editId) {
+            data.id = parseInt(editId);
+            this.api('update_webhook', data, 'POST').done(() => this.showSettings('webhooks'));
+        } else {
+            this.api('create_webhook', data, 'POST').done(() => this.showSettings('webhooks'));
+        }
+    },
+
+    editWebhook(id) {
+        this.api('list_webhooks', { project_id: this.currentProject.id }).done(webhooks => {
+            const w = (webhooks || []).find(h => h.id === id);
+            if (!w) return;
+            $('#webhook-edit-id').val(w.id);
+            $('#webhook-type').val(w.type);
+            this.togglePresetFields();
+            if (w.type === 'telegram') {
+                $('#webhook-bot-token').val(w.bot_token || '');
+                $('#webhook-chat-id').val(w.chat_id || '');
+                $('#webhook-telegram-template').val(w.message_template || '');
+            } else {
+                $('#webhook-url').val(w.url || '');
+                if (w.type === 'slack') {
+                    $('#webhook-slack-template').val(w.message_template || '');
+                }
+            }
+        });
+    },
+
+    testWebhook(id, btn) {
+        $(btn).prop('disabled', true).text('Sending...');
+        this.api('test_webhook', { id }, 'POST').done(() => {
+            $(btn).text('Sent!');
+            setTimeout(() => $(btn).prop('disabled', false).text('Test'), 2000);
+        }).fail(() => {
+            $(btn).text('Failed');
+            setTimeout(() => $(btn).prop('disabled', false).text('Test'), 2000);
+        });
+    },
+
     deleteWebhook(id) { this.api('delete_webhook', { id }, 'POST').done(() => this.showSettings('webhooks')); },
     toggleWebhook(id) { this.api('toggle_webhook', { id }, 'POST').done(() => this.showSettings('webhooks')); },
 
