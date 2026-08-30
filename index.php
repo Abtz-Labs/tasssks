@@ -4951,6 +4951,7 @@ const App = {
                 if (firstCol) {
                     new Sortable(firstCol, {
                         animation: 150, ghostClass: 'sortable-ghost',
+                        scroll: true, scrollSensitivity: 80, scrollSpeed: 15, bubbleScroll: true,
                         onEnd: (evt) => {
                             const cardId = parseInt(evt.item.dataset.id);
                             const newColumnId = parseInt(evt.to.dataset.columnId);
@@ -4978,6 +4979,7 @@ const App = {
         document.querySelectorAll('.column-cards').forEach(el => {
             new Sortable(el, {
                 group: 'cards', animation: 150, ghostClass: 'sortable-ghost',
+                scroll: true, scrollSensitivity: 80, scrollSpeed: 15, bubbleScroll: true,
                 onEnd: (evt) => {
                     const cardId = parseInt(evt.item.dataset.id);
                     const newColumnId = parseInt(evt.to.dataset.columnId);
