@@ -3361,9 +3361,12 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
     justify-content: space-between;
     cursor: pointer;
     transition: all var(--transition);
+    gap: 16px;
 }
 
 .project-card:hover { border-color: var(--primary); box-shadow: var(--shadow); }
+.project-index { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; font-size:12px; font-weight:600; color:var(--text-muted); background:var(--bg); border-radius:var(--radius-sm); flex:0 0 22px; }
+.project-card-info { flex: 1; min-width: 0; }
 .project-card-info h3 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
 .project-card-info span { font-size: 13px; color: var(--text-muted); }
 
@@ -3951,6 +3954,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 }
 .dropdown-item:hover { background: var(--surface-hover); }
 .dropdown-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
+.shortcut-hint { margin-left:auto; font-size:11px; color:var(--text-light); opacity:0.6; }
 
 .dropdown-divider {
     height: 1px;
@@ -4788,13 +4792,14 @@ const App = {
             list.html('<div class="text-center p-4 text-muted">No projects yet. Create one to get started.</div>');
             return;
         }
-        list.html(this.projects.map(p => {
+        list.html(this.projects.map((p, i) => {
             const unread = p.unread_comments || 0;
             const badgeText = unread > 9 ? '9+' : unread;
             const badgeHtml = unread ? `<span class="badge badge-muted">${badgeText}</span>` : '';
             const deleteBtn = p.is_owner ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();App.confirmDeleteProject('${p.id}','${this.escAttr(p.name)}')">Delete</button>` : '';
             const watchIcon = p.is_watching ? '<svg viewBox="0 0 24 24" width="14" height="14" stroke="var(--primary)" fill="none" stroke-width="2" title="Watching"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '';
             return `<div class="project-card" onclick="App.openProject('${p.id}')">
+                <span class="project-index">${i + 1}</span>
                 <div class="project-card-info">
                     <h3>${this.esc(p.name)} ${watchIcon}</h3>
                     <span>Created ${p.created_at}</span>
@@ -4874,14 +4879,17 @@ const App = {
                     <button class="dropdown-item" onclick="App.showAccount();$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                         Account
+                        <span class="shortcut-hint">A</span>
                     </button>
                     ${isAdmin ? `<button class="dropdown-item" onclick="App.showTeam();$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         Team
+                        <span class="shortcut-hint">T</span>
                     </button>` : ''}
                     ${isAdmin ? `<button class="dropdown-item" onclick="App.showAppSettings();$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                         Settings${this.updateAvailable ? ' <span style="display:inline-block;width:7px;height:7px;background:var(--primary);border-radius:50%;vertical-align:middle;margin-left:4px"></span>' : ''}
+                        <span class="shortcut-hint">⌘,</span>
                     </button>` : ''}
                     <div class="dropdown-divider"></div>
                     <button class="dropdown-item" onclick="App.toggleTheme();$('.dropdown-menu').removeClass('open')">
@@ -4892,6 +4900,7 @@ const App = {
                     <button class="dropdown-item" onclick="App.showHelp();$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M3 11h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H3a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z"/><path d="M21 11h-1a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1z"/><path d="M4 11V8a8 8 0 0 1 16 0v3"/><path d="M18 18a4 4 0 0 1-4 4h-2"/></svg>
                         Help
+                        <span class="shortcut-hint">?</span>
                     </button>
                     <a class="dropdown-item" href="https://github.com/Abtz-Labs/tasssks/issues" target="_blank" rel="noopener noreferrer" onclick="$('.dropdown-menu').removeClass('open')">
                         <svg viewBox="0 0 24 24" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
