@@ -3296,6 +3296,11 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 .form-group { margin-bottom: 16px; }
 .form-group-hint { font-size: 12px; color: var(--text-light); margin-top: 4px; }
 .form-group-hint a { color: var(--primary); }
+.card-ref-dropdown { position: absolute; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); z-index: 1001; max-width: 250px; max-height: 150px; overflow-y: auto; display: none; }
+.card-ref-dropdown .card-ref-item { padding: 6px 10px; cursor: pointer; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.card-ref-dropdown .card-ref-item:hover, .card-ref-dropdown .card-ref-item.active { background: var(--primary-light); }
+.card-ref-dropdown .card-ref-item .card-ref-id { color: var(--primary); font-weight: 600; min-width: 30px; }
+.card-ref-dropdown .card-ref-item .card-ref-title { color: var(--text-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Inline field (input + button same height, no gap) */
 .field-addons {
@@ -3330,6 +3335,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 
 /* Projects list */
 .projects-view {
+    width: 100%;
     max-width: 800px;
     margin: 60px auto;
     padding: 0 24px;
@@ -3524,7 +3530,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 }
 .modal-close:hover { color: var(--text); }
 
-.modal-body { padding: 24px; }
+.modal-body { padding: 24px; position: relative; }
 .modal-footer {
     padding: 16px 24px;
     border-top: 1px solid var(--border);
@@ -4331,6 +4337,7 @@ function _initQuill(selector, opts = {}) {
         toolbar.querySelectorAll('button, select').forEach(el => el.setAttribute('tabindex', '-1'));
     }
     _initQuillReplacements(quill);
+    _initCardRefAutocomplete(quill);
     if (opts.html) {
         quill.clipboard.dangerouslyPasteHTML(opts.html);
         quill.setSelection(0, 0);
@@ -4342,6 +4349,10 @@ function _quillToMarkdown(quill) {
     const html = quill.root.innerHTML;
     if (!html || html === '<p><br></p>') return '';
     return _turndown.turndown(html);
+}
+
+function linkCardRefs(html, projectId) {
+    return html.replace(/#(\d+)/g, `<a href="#project/${projectId}/card/$1" onclick="event.preventDefault();App.openCard($1)">#$1</a>`);
 }
 
 const TEXT_REPLACEMENTS = {
@@ -4387,6 +4398,72 @@ function _initQuillReplacements(quill) {
                 return;
             }
         }
+    });
+}
+
+let _cardRefDropdown = null;
+function _initCardRefAutocomplete(quill) {
+    if (!_cardRefDropdown) {
+        _cardRefDropdown = document.createElement('div');
+        _cardRefDropdown.className = 'card-ref-dropdown';
+        const modal = document.querySelector('.modal-body') || document.body;
+        modal.appendChild(_cardRefDropdown);
+    }
+    let _matches = [];
+
+    function _hideDropdown() { _cardRefDropdown.style.display = 'none'; _matches = []; }
+
+    function _showDropdown(quill, matches) {
+        const bounds = quill.getBounds(quill.getSelection().index);
+        const containerOffset = quill.container.getBoundingClientRect().top - _cardRefDropdown.parentElement.getBoundingClientRect().top;
+        _cardRefDropdown.style.left = (bounds.left) + 'px';
+        _cardRefDropdown.style.top = (containerOffset + bounds.bottom + 4) + 'px';
+        _cardRefDropdown.innerHTML = matches.map(m =>
+            `<div class="card-ref-item"><span class="card-ref-id">#${m.id}</span><span class="card-ref-title">${App.esc(m.title)}</span></div>`
+        ).join('');
+        _cardRefDropdown.style.display = 'block';
+    }
+
+    function _linkifyCardRefs(quill) {
+        const sel = quill.getSelection();
+        const keep = sel ? sel.index : null;
+        const text = quill.getText();
+        const regex = /#(\d+)(?![0-9])/g;
+        let m;
+        let changed = false;
+        while ((m = regex.exec(text)) !== null) {
+            const idx = m.index;
+            const len = m[0].length;
+            const end = idx + len;
+            if (keep !== null && keep === end) continue;
+            quill.formatText(idx, len, 'link', `#project/${App.currentProject?.id || ''}/card/${m[1]}`, 'silent');
+            changed = true;
+        }
+        if (changed && keep !== null) {
+            quill.setSelection(keep, 0);
+        }
+    }
+
+    quill.on('text-change', () => {
+        const range = quill.getSelection();
+        if (!range) return;
+        const text = quill.getText().slice(0, range.index);
+        const m = text.match(/#(\d+)$/);
+        if (m) {
+            const query = m[1];
+            _matches = (App.cards || []).filter(c => String(c.id).startsWith(query)).slice(0, 5);
+            if (_matches.length) { _showDropdown(quill, _matches); }
+            else { _hideDropdown(); }
+        } else {
+            _hideDropdown();
+        }
+        setTimeout(() => _linkifyCardRefs(quill), 50);
+    });
+
+    quill.on('selection-change', (range) => {
+        if (!range || range.length > 0) { _hideDropdown(); return; }
+        const text = quill.getText().slice(0, range.index);
+        if (!text.match(/#(\d+)$/)) _hideDropdown();
     });
 }
 
@@ -5048,7 +5125,7 @@ const App = {
 
     createCard(columnId) {
         const title = $('#new-card-title').val().trim();
-        if (!title) return;
+        if (!title) { this.toast('Title is required.'); $('#new-card-title').focus(); return; }
         const description = this._quill ? _quillToMarkdown(this._quill) : '';
         this.api('create_card', { column_id: columnId, title, description }, 'POST').done(res => {
             const cardId = res.id;
@@ -5067,7 +5144,7 @@ const App = {
             history.replaceState(null, '', `#project/${this.currentProject.id}/card/${cardId}`);
             this._navigating = false;
         }
-        const descHtml = card.description ? DOMPurify.sanitize(marked.parse(card.description), { ADD_ATTR: ['target'] }) : '<em class="text-no-desc">No description</em>';
+        const descHtml = card.description ? linkCardRefs(DOMPurify.sanitize(marked.parse(card.description), { ADD_ATTR: ['target'] }), this.currentProject.id) : '<em class="text-no-desc">No description</em>';
         const assignedTags = (card.tags || []);
         const tagsHtml = assignedTags.map(t =>
             `<span class="tag" style="background:${t.color};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
@@ -5203,7 +5280,7 @@ const App = {
 
     saveCardTitle(cardId) {
         const title = $('#edit-card-title').val().trim();
-        if (!title) return;
+        if (!title) { this.toast('Title is required.'); $('#edit-card-title').focus(); return; }
         this.api('update_card', { id: cardId, title }, 'POST').done(() => { this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200); });
     },
 
@@ -5232,9 +5309,7 @@ const App = {
     moveCardToColumn(cardId, newColumnId) {
         const card = this.cards.find(c => c.id == cardId);
         if (!card || card.column_id == newColumnId) return;
-        const colCards = this.cards.filter(c => c.column_id == newColumnId && c.id != cardId);
-        const position = colCards.length;
-        this.api('move_card', { id: cardId, column_id: newColumnId, position }, 'POST').done(() => {
+        this.api('move_card', { id: cardId, column_id: newColumnId, position: 0 }, 'POST').done(() => {
             this.refreshBoard();
             setTimeout(() => this.openCard(cardId), 200);
         });

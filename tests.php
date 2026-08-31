@@ -1939,6 +1939,19 @@ assert_true(str_contains($src, '{{event}}') || str_contains($src, '{{project}}')
 assert_true(str_contains($src, 'moveCardToColumn('), 'moveCardToColumn function defined');
 assert_true(str_contains($src, 'webhook-column') || str_contains($src, 'card-column-select') || str_contains($src, "id=\"card-column"), 'Column selector element exists in card detail');
 
+// Card cross-references: #123 in description links to card
+assert_true(str_contains($src, 'linkCardRefs('), 'linkCardRefs helper defined');
+assert_true(str_contains($src, '#/card/') || str_contains($src, '#project/') || str_contains($src, '#projects/'), 'Card reference links use hash-based URL');
+
+// Card reference autocomplete
+assert_true(str_contains($src, '_initCardRefAutocomplete('), '_initCardRefAutocomplete helper defined');
+assert_true(str_contains($src, 'card-ref-dropdown') || str_contains($src, 'cardRefDropdown'), 'Card ref dropdown element exists');
+assert_true(str_contains($src, 'getBounds('), 'Uses Quill getBounds for dropdown positioning');
+
+// Card title is required — show feedback instead of silently failing
+assert_true(str_contains($src, "this.toast('Title is required.')"), 'createCard shows toast when title is empty');
+assert_true(str_contains($src, "saveCardTitle(cardId) {\n        const title = $('#edit-card-title').val().trim();\n        if (!title) { this.toast('Title is required.');"), 'saveCardTitle shows toast when title is empty');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
 if ($failed === 0) {
