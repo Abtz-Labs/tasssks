@@ -42,4 +42,5 @@ Session checkpoints for continuity across sessions.
 - Mobile card drag: SortableJS `delay: 500`, `delayOnTouchOnly: true`, `touchStartThreshold: 5`, `chosenClass: 'sortable-chosen'`. Tilt + scale visual feedback. Desktop drag unaffected.
 - Avatar menu shortcut indicators: replaced `<kbd>` with `.shortcut-hint` spans — subtle, small (11px), muted (`var(--text-light)` + `opacity:0.6`), right-aligned. Account=`A`, Team=`T`, Settings=`⌘,`, Help=`?`.
 - Project list index: added visual index numbers (1-9) via `.project-index` badge — 22px rounded square, muted text on `var(--bg)` background, `flex: 0 0 22px` to prevent growth. Added `.project-card-info { flex: 1; min-width: 0; }` to contain the index to its badge width.
+- SVG favicon: added inline data URI favicon matching uptime style — 32x32 rounded rect (`#334155`), white bold sans-serif "T." text. Inserted after `<meta charset="UTF-8">`.
 - Test count: 483 (all passing)

@@ -3110,6 +3110,7 @@ $isGuestRequest = isset($_GET['guest']);
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23334155'/><text x='16' y='22' font-family='sans-serif' font-size='14' font-weight='bold' fill='white' text-anchor='middle'>T.</text></svg>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= APP_NAME ?></title>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
