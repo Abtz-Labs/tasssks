@@ -3373,7 +3373,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
     gap: 16px;
     padding: 24px;
     overflow-x: auto;
-    min-height: calc(100vh - 60px);
+    min-height: calc(100vh - 110px);
     align-items: flex-start;
 }
 
@@ -3384,7 +3384,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
     border-radius: var(--radius);
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 100px);
+    max-height: calc(100vh - 150px);
 }
 
 .column-header {
@@ -3439,6 +3439,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-mut
 
 .card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
 .card.sortable-ghost { opacity: 0.4; background: var(--primary-light); }
+.card.sortable-chosen { transform: rotate(-2deg) scale(1.03); box-shadow: var(--shadow-lg); z-index: 10; transition: transform 0.15s ease, box-shadow 0.15s ease; }
 
 .card-title { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
 .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
@@ -4046,7 +4047,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 @media (max-width: 768px) {
     /* Board */
     .board { padding: 12px; padding-bottom: 48px; gap: 12px; }
-    .column { flex: 0 0 260px; }
+    .column { flex: 0 0 85vw; }
     .projects-view { margin: 24px auto; }
 
     /* Footer: stack vertically */
@@ -5056,6 +5057,8 @@ const App = {
         document.querySelectorAll('.column-cards').forEach(el => {
             new Sortable(el, {
                 group: 'cards', animation: 150, ghostClass: 'sortable-ghost',
+                delay: 500, delayOnTouchOnly: true, touchStartThreshold: 5,
+                chosenClass: 'sortable-chosen',
                 scroll: true, scrollSensitivity: 80, scrollSpeed: 15, bubbleScroll: true,
                 onEnd: (evt) => {
                     const cardId = parseInt(evt.item.dataset.id);

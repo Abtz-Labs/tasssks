@@ -30,18 +30,14 @@ Session checkpoints for continuity across sessions.
 
 ## 2026-08-31
 
-- Card stays open after creation: `createCard()` now uses API response `id` to re-open card via `setTimeout(() => this.openCard(cardId), 100)` after board refresh.
-- Quill toolbar not focusable: `_initQuill` sets `tabindex="-1"` on `.ql-toolbar` container and all `button`/`select` children. Uses `parentNode.querySelector('.ql-toolbar')` (sibling, not ancestor `closest()`).
-- Footer layout fix: replaced `position: fixed` footer with flex-column body layout (`display: flex; flex-direction: column; min-height: 100vh`) and `margin-top: auto` on footer. Content no longer overlaps on long pages.
-- Text replacements: added `TEXT_REPLACEMENTS` map (`:check:`→✅, `:cross:`/`:x:`→❌, `->`/`:arrow-right:`→→, `<-`→←, `--`/`:emdash:`→—). `_applyReplacements()` for input fields, `_initQuillReplacements()` for Quill editors (uses `quill.getText()` for full-text check, not delta fragment).
-- Webhook UX overhaul (DB migration v7): added `bot_token`, `chat_id`, `message_template` columns to `project_webhooks`. Preset-specific form fields (Generic: URL; Slack: URL + template; Telegram: bot token + chat ID + template). Setup instructions with external links. Edit and Test buttons on webhook rows. `apiUpdateWebhook()` and `apiTestWebhook()` endpoints. `formatWebhookPayload()` supports `{{event}}`, `{{project}}`, `{{actor}}`, `{{title}}`, `{{timestamp}}` template variables.
-- Test count: 474 (all passing)
-
-## 2026-08-31 (same day, continued)
-
-- Card reference `#ID` autocomplete in Quill: `_initCardRefAutocomplete(quill)` shows a read-only hint dropdown (`.card-ref-dropdown` appended to `.modal-body`, which got `position: relative`) of matching cards while the text before the cursor matches `#\d+`. Rebuilt with no selection after repeated cursor-drift bugs.
-- Live linkification: `_linkifyCardRefs(quill)` applies Quill `link` format to `#\d+` via `formatText(..., 'silent')`, capturing + restoring selection so the caret doesn't move. Runs debounced (~50ms) on `text-change` for manually typed refs. View-mode `linkCardRefs(html, projectId)` links `#N` in `openCard`.
-- Cursor bug root cause: `formatText` (even with `'silent'`) disturbed the editor selection during `_selectMatch`/linkify. Decided to drop dropdown selection entirely (read-only hint) rather than keep fighting the cursor placement; manual `#ID` typing + live linkify remains the supported flow.
-- Linkify-while-typing bug: `#1` linked instantly, so continuing gave `[#1](...)0`. Fix: regex `/#(\d+)(?![0-9])/g` + skip linkifying any ref whose caret sits immediately after its last digit (user still typing). Also always re-apply link format (dropped `!existing.link` guard) so a lengthened `#10` gets fully linked instead of leaving `[#1]0`. Test count: 481 (all passing).
-- Card title validation UX: `createCard()` and `saveCardTitle()` silently `return`ed when title was empty (no feedback). Added `this.toast('Title is required.')` + refocus the title input. Backend `apiCreateCard` already rejects empty title with a 400 ('Missing fields'). Added 2 code-quality tests. Test count: 483 (all passing).
-- Card column move UX: `moveCardToColumn()` appended the card to the end of the new column (`position = colCards.length`). Changed to `position: 0` so a card moved via the card-detail column dropdown lands at the top of the new stack. Backend `apiMoveCard` already shifts the other cards correctly. Test count: 483 (all passing).
+- Card stays open after creation: `createCard()` uses API response `id` to re-open card via `setTimeout(() => this.openCard(cardId), 100)`.
+- Quill toolbar not focusable: `_initQuill` sets `tabindex="-1"` on `.ql-toolbar` and all `button`/`select` children.
+- Footer layout fix: replaced `position: fixed` footer with flex-column body layout (`display: flex; flex-direction: column; min-height: 100vh`) and `margin-top: auto` on footer.
+- Text replacements: `TEXT_REPLACEMENTS` map (`:check:`→✅, `:cross:`/`:x:`→❌, `->`/`:arrow-right:`→→, `<-`←←, `--`/`:emdash:`→—). `_applyReplacements()` for inputs, `_initQuillReplacements()` for Quill.
+- Webhook UX overhaul (DB migration v7): `bot_token`, `chat_id`, `message_template` columns. Preset-specific form fields. Edit/Test buttons. `apiUpdateWebhook()`, `apiTestWebhook()`. Template variables: `{{event}}`, `{{project}}`, `{{actor}}`, `{{title}}`, `{{timestamp}}`.
+- Card reference `#ID` autocomplete: read-only hint dropdown while text before cursor matches `#\d+`. Live linkification via `_linkifyCardRefs()` with debounced `text-change`. Regex `/#(\d+)(?![0-9])/g` skips refs still being typed.
+- Card title validation: `createCard()` and `saveCardTitle()` show `this.toast('Title is required.')` + refocus input when empty.
+- Card column move: `moveCardToColumn()` sends `position: 0` so moved cards land at top of new column.
+- Mobile column sizing: changed from fixed `260px` to `85vw` in `@media (max-width: 768px)`.
+- Mobile card drag: SortableJS `delay: 500`, `delayOnTouchOnly: true`, `touchStartThreshold: 5`, `chosenClass: 'sortable-chosen'`. Tilt + scale visual feedback. Desktop drag unaffected.
+- Test count: 483 (all passing)
