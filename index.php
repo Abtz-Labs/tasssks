@@ -3817,8 +3817,14 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 .report-periods, .report-group { display: flex; gap: 0; align-items: center; }
 .report-periods > .btn, .report-group > .btn { border-radius: 0; border-right: none; }
 .report-periods > .btn:first-of-type, .report-group > .btn:first-of-type { border-top-left-radius: var(--radius); border-bottom-left-radius: var(--radius); }
-.report-periods > .btn:last-child, .report-group > .btn:last-child { border-top-right-radius: var(--radius); border-bottom-right-radius: var(--radius); border-right: 1px solid var(--border); }
+.report-group > .btn:last-child { border-top-right-radius: var(--radius); border-bottom-right-radius: var(--radius); border-right: 1px solid var(--border); }
 .report-periods > .btn.btn-primary, .report-group > .btn.btn-primary { border-right: 1px solid transparent; }
+.report-custom-wrap .btn { border-top-right-radius: var(--radius); border-bottom-right-radius: var(--radius); border-right: 1px solid var(--border); }
+.report-custom-wrap .btn.btn-primary { border-right: 1px solid transparent; }
+.report-custom-wrap { position: relative; }
+.report-custom-wrap .btn { border-top-left-radius: 0; border-bottom-left-radius: 0; border-top-right-radius: var(--radius); border-bottom-right-radius: var(--radius); border-right: 1px solid var(--border); }
+.report-custom-dropdown { position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+.report-custom-dropdown input[type="date"] { font-size: 13px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); }
 .report-group > span { margin-right: 8px; }
 .report-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
 .report-stat { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
@@ -5868,15 +5874,15 @@ const App = {
             let tableHtml = '';
             if (groupBy === 'card') {
                 const grouped = {};
-                rows.forEach(e => { const k = e.card_title || 'Deleted card'; if (!grouped[k]) grouped[k] = { minutes: 0, entries: [] }; grouped[k].minutes += e.minutes; grouped[k].entries.push(e); });
+                rows.forEach(e => { const k = e.card_title || 'Deleted card'; if (!grouped[k]) grouped[k] = { minutes: 0, entries: [] }; grouped[k].minutes += Number(e.minutes); grouped[k].entries.push(e); });
                 tableHtml = Object.entries(grouped).map(([title, g]) => `<tr><td>${this.esc(title)}</td><td>${this.formatMinutes(g.minutes)}</td><td>${g.entries.length}</td></tr>`).join('');
             } else if (groupBy === 'user') {
                 const grouped = {};
-                rows.forEach(e => { const k = e.author_name || 'Unknown'; if (!grouped[k]) grouped[k] = 0; grouped[k] += e.minutes; });
+                rows.forEach(e => { const k = e.author_name || 'Unknown'; if (!grouped[k]) grouped[k] = 0; grouped[k] += Number(e.minutes); });
                 tableHtml = Object.entries(grouped).map(([name, m]) => `<tr><td>${this.esc(name)}</td><td>${this.formatMinutes(m)}</td><td></td></tr>`).join('');
             } else {
                 const grouped = {};
-                rows.forEach(e => { if (!grouped[e.worked_at]) grouped[e.worked_at] = 0; grouped[e.worked_at] += e.minutes; });
+                rows.forEach(e => { if (!grouped[e.worked_at]) grouped[e.worked_at] = 0; grouped[e.worked_at] += Number(e.minutes); });
                 tableHtml = Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0])).map(([date, m]) => `<tr><td>${this.formatDate(date)}</td><td>${this.formatMinutes(m)}</td><td></td></tr>`).join('');
             }
             const content = `
@@ -5886,6 +5892,15 @@ const App = {
                         <button class="btn btn-sm ${period==='week'?'btn-primary':'btn-ghost'}" onclick="App.showTimeReport('week')">This Week</button>
                         <button class="btn btn-sm ${period==='month'?'btn-primary':'btn-ghost'}" onclick="App.showTimeReport('month')">This Month</button>
                         <button class="btn btn-sm ${period==='year'?'btn-primary':'btn-ghost'}" onclick="App.showTimeReport('year')">This Year</button>
+                        <div class="report-custom-wrap">
+                            <button class="btn btn-sm ${period==='custom'?'btn-primary':'btn-ghost'}" onclick="App.toggleCustomDates(this)">Custom</button>
+                            <div class="report-custom-dropdown" style="display:none">
+                                <input type="date" id="report-from" value="${from}">
+                                <span class="text-muted">to</span>
+                                <input type="date" id="report-to" value="${to}">
+                                <button class="btn btn-sm btn-primary" onclick="App.showTimeReport('custom')">Apply</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="report-group">
                         <span class="text-sm text-muted">Group by:</span>
@@ -5909,6 +5924,22 @@ const App = {
             this.openModal('Time Report — ' + this.esc(this.currentProject.name), content, footer);
             $('.modal').addClass('modal-wide');
         });
+    },
+
+    toggleCustomDates(btn) {
+        const dd = btn.nextElementSibling;
+        const visible = dd.style.display !== 'none';
+        dd.style.display = visible ? 'none' : 'flex';
+        if (!visible) {
+            dd.querySelector('input').focus();
+            const handler = (e) => {
+                if (!btn.parentElement.contains(e.target)) {
+                    dd.style.display = 'none';
+                    document.removeEventListener('click', handler);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', handler), 0);
+        }
     },
 
     _refreshTokenList() {
