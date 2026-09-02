@@ -5684,6 +5684,8 @@ const App = {
 
     loadTimeEntries(cardId) {
         this.api('list_time_entries', { card_id: cardId }).done(entries => {
+            const total = entries.reduce((s, e) => s + Number(e.minutes), 0);
+            $(`#time-total-${cardId}`).text(this.formatMinutes(total));
             if (!entries.length) {
                 $(`#time-entries-${cardId}`).html('<p class="text-muted text-sm">No time entries yet.</p>');
                 return;
@@ -5764,7 +5766,7 @@ const App = {
             this.toast('Time entry saved.', 'success');
             this.loadTimeEntries(cardId);
             this.api('list_time_entries', { card_id: cardId }).done(entries => {
-                const total = entries.reduce((s, e) => s + e.minutes, 0);
+                const total = entries.reduce((s, e) => s + Number(e.minutes), 0);
                 $(`#time-total-${cardId}`).text(this.formatMinutes(total));
             });
         });
@@ -5778,7 +5780,7 @@ const App = {
             this.toast('Timer ended.', 'success');
             this.loadTimeEntries(cardId);
             this.api('list_time_entries', { card_id: cardId }).done(entries => {
-                const total = entries.reduce((s, e) => s + e.minutes, 0);
+                const total = entries.reduce((s, e) => s + Number(e.minutes), 0);
                 $(`#time-total-${cardId}`).text(this.formatMinutes(total));
             });
         });
@@ -6915,7 +6917,21 @@ const App = {
         document.title = this.appName;
     },
 
-    formatMinutes(m) { const h = Math.floor(m / 60); const mins = m % 60; return h ? (mins ? `${h}h ${mins}m` : `${h}h`) : `${mins}m`; },
+    formatMinutes(m) {
+        m = Math.max(0, Math.floor(m));
+        const y = Math.floor(m / 525600); m %= 525600;
+        const mo = Math.floor(m / 43200); m %= 43200;
+        const d = Math.floor(m / 1440); m %= 1440;
+        const h = Math.floor(m / 60);
+        const mins = m % 60;
+        const parts = [];
+        if (y) parts.push(`${y}y`);
+        if (mo) parts.push(`${mo}mo`);
+        if (d) parts.push(`${d}d`);
+        if (h) parts.push(`${h}h`);
+        if (mins || !parts.length) parts.push(`${mins}m`);
+        return parts.join(' ');
+    },
     toast(msg, type = 'error') {
         $('.toast').remove();
         const $t = $(`<div class="toast toast-${type}">${this.esc(msg)}</div>`);
