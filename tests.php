@@ -1494,7 +1494,7 @@ assert_eq(200, $r['status'], 'create tag without color returns 200');
 $tagId2 = $r['body']['id'];
 $r = req('list_tags', ['project_id' => $adminProjectId], 'GET', '', $cookieFile);
 $defaultTag = array_values(array_filter($r['body'], fn($t) => $t['id'] == $tagId2))[0] ?? null;
-assert_eq('#3b82f6', $defaultTag['color'], 'tag gets default color when none specified');
+assert_eq('#5e81ac', $defaultTag['color'], 'tag gets default color when none specified');
 
 // Create tag — missing name fails
 $r = req('create_tag', ['project_id' => $adminProjectId, 'name' => '', 'color' => '#22c55e'], 'POST', $adminCsrf);
@@ -1707,7 +1707,7 @@ section('Updates');
 // auth_status returns version field
 $r = req('auth_status');
 assert_true(isset($r['body']['version']), 'auth_status returns version field');
-assert_eq('0.1.0', $r['body']['version'], 'version matches expected value');
+assert_eq('0.2.0', $r['body']['version'], 'version matches expected value');
 
 // auth_status returns update_available field
 assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');

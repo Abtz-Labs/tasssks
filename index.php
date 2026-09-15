@@ -27,7 +27,7 @@ if (php_sapi_name() === 'cli-server') {
 // ============================================================================
 
 define('APP_NAME', 'Tasssks');
-define('APP_VERSION', '0.1.0');
+define('APP_VERSION', '0.2.0');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', 10 * 1024 * 1024); // 10MB
@@ -86,7 +86,7 @@ function initDatabase(): void {
             project_id TEXT NOT NULL,
             name TEXT NOT NULL,
             position INTEGER NOT NULL DEFAULT 0,
-            color TEXT DEFAULT '#6b7280',
+            color TEXT DEFAULT '#4c566a',
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS cards (
@@ -103,7 +103,7 @@ function initDatabase(): void {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id TEXT NOT NULL,
             name TEXT NOT NULL,
-            color TEXT DEFAULT '#3b82f6',
+            color TEXT DEFAULT '#5e81ac',
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS card_tags (
@@ -1684,7 +1684,7 @@ function apiCreateTag(): void {
     $input = getInput();
     $projectId = $input['project_id'] ?? '';
     $name = trim($input['name'] ?? '');
-    $color = $input['color'] ?? '#3b82f6';
+    $color = $input['color'] ?? '#5e81ac';
     $cardId = (int) ($input['card_id'] ?? 0);
 
     if (!$projectId || !$name) jsonResponse(['error' => 'Missing fields'], 400);
@@ -3110,7 +3110,7 @@ $isGuestRequest = isset($_GET['guest']);
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23334155'/><text x='16' y='22' font-family='sans-serif' font-size='14' font-weight='bold' fill='white' text-anchor='middle'>T.</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23434C5E'/><text x='16' y='22' font-family='sans-serif' font-size='14' font-weight='bold' fill='%23ECEFF4' text-anchor='middle'>T.</text></svg>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= APP_NAME ?></title>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
@@ -3123,47 +3123,73 @@ $isGuestRequest = isset($_GET['guest']);
     <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
     <style>
 :root {
-    --bg: #f8fafc;
+    --nord0: #2e3440;
+    --nord1: #3b4252;
+    --nord2: #434c5e;
+    --nord3: #4c566a;
+    --nord4: #d8dee9;
+    --nord5: #e5e9f0;
+    --nord6: #eceff4;
+    --nord7: #8fbcbb;
+    --nord8: #88c0d0;
+    --nord9: #81a1c1;
+    --nord10: #5e81ac;
+    --nord11: #bf616a;
+    --nord12: #d08770;
+    --nord13: #ebcb8b;
+    --nord14: #a3be8c;
+    --nord15: #b48ead;
+    --bg: var(--nord6);
     --surface: #ffffff;
-    --surface-hover: #f1f5f9;
-    --border: #e2e8f0;
-    --border-strong: #cbd5e1;
-    --text: #1e293b;
-    --text-muted: #64748b;
-    --text-light: #94a3b8;
-    --primary: #3b82f6;
-    --primary-hover: #2563eb;
-    --primary-light: #eff6ff;
-    --danger: #ef4444;
-    --danger-hover: #dc2626;
-    --success: #10b981;
+    --surface-hover: var(--nord5);
+    --border: var(--nord4);
+    --border-strong: rgba(46,52,64,0.16);
+    --text: var(--nord0);
+    --text-muted: var(--nord3);
+    --text-light: #7b8794;
+    --primary: var(--nord10);
+    --primary-hover: #4f7099;
+    --primary-light: rgba(94,129,172,0.12);
+    --on-primary: #ffffff;
+    --danger: var(--nord11);
+    --danger-hover: #a94f57;
+    --danger-soft: rgba(191,97,106,0.12);
+    --warning: #a75f37;
+    --warning-soft: rgba(208,135,112,0.14);
+    --success: #5f8f68;
+    --success-soft: rgba(163,190,140,0.20);
     --radius: 8px;
     --radius-sm: 4px;
-    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-    --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04);
-    --shadow-lg: 0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05);
+    --shadow: 0 1px 3px rgba(46,52,64,0.07), 0 1px 2px rgba(46,52,64,0.05);
+    --shadow-md: 0 4px 6px rgba(46,52,64,0.08), 0 2px 4px rgba(46,52,64,0.06);
+    --shadow-lg: 0 10px 15px rgba(46,52,64,0.12), 0 4px 6px rgba(46,52,64,0.08);
     --transition: 150ms ease;
     --input-height: 38px;
 }
 
 [data-theme="dark"] {
-    --bg: #0f172a;
-    --surface: #1e293b;
-    --surface-hover: #334155;
-    --border: #334155;
-    --border-strong: #475569;
-    --text: #f1f5f9;
-    --text-muted: #94a3b8;
-    --text-light: #64748b;
-    --primary: #60a5fa;
-    --primary-hover: #3b82f6;
-    --primary-light: #1e3a5f;
-    --danger: #f87171;
-    --danger-hover: #ef4444;
-    --success: #34d399;
-    --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
-    --shadow-md: 0 4px 6px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2);
-    --shadow-lg: 0 10px 15px rgba(0,0,0,0.4), 0 4px 6px rgba(0,0,0,0.3);
+    --bg: var(--nord0);
+    --surface: var(--nord1);
+    --surface-hover: var(--nord2);
+    --border: var(--nord3);
+    --border-strong: rgba(216,222,233,0.24);
+    --text: var(--nord6);
+    --text-muted: #aab6c6;
+    --text-light: #8695a8;
+    --primary: var(--nord8);
+    --primary-hover: var(--nord7);
+    --primary-light: rgba(136,192,208,0.16);
+    --on-primary: var(--nord0);
+    --danger: var(--nord11);
+    --danger-hover: #cf727a;
+    --danger-soft: rgba(191,97,106,0.20);
+    --warning: var(--nord12);
+    --warning-soft: rgba(208,135,112,0.22);
+    --success: var(--nord14);
+    --success-soft: rgba(163,190,140,0.16);
+    --shadow: 0 1px 3px rgba(0,0,0,0.25), 0 1px 2px rgba(0,0,0,0.18);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.30), 0 2px 4px rgba(0,0,0,0.22);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.40), 0 4px 6px rgba(0,0,0,0.30);
 }
 
 [data-theme="dark"] .ql-snow .ql-stroke { stroke: var(--text-muted); }
@@ -3244,13 +3270,13 @@ body {
 }
 
 .btn:disabled, .btn[disabled] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
-.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary { background: var(--primary); color: var(--on-primary); }
 .btn-primary:hover { background: var(--primary-hover); }
 
 .btn-ghost { background: transparent; color: var(--text-muted); border-color: var(--border); }
 .btn-ghost:hover { background: var(--surface-hover); color: var(--text); border-color: var(--border-strong); }
 .btn-outline-primary { background: transparent; color: var(--primary); border-color: var(--primary); }
-.btn-outline-primary:hover { background: var(--primary); color: #fff; }
+.btn-outline-primary:hover { background: var(--primary); color: var(--on-primary); }
 
 .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
 .btn-danger:hover { background: var(--danger); color: #fff; }
@@ -3845,21 +3871,21 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 .recovery-key-confirm input { cursor: pointer; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: var(--radius); font-size: 14px; z-index: 10001; box-shadow: var(--shadow-lg); animation: toast-in 0.2s ease; }
 .toast-error { background: var(--danger); color: #fff; }
-.toast-success { background: var(--success, #22c55e); color: #fff; }
+.toast-success { background: var(--success); color: var(--on-primary); }
 @keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 
 /* Badge patterns */
 .badge-admin {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--primary-light);
+    color: var(--primary);
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 11px;
     font-weight: 500;
 }
 .badge-member {
-    background: #f1f5f9;
-    color: #475569;
+    background: var(--surface-hover);
+    color: var(--text-muted);
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 11px;
@@ -3868,11 +3894,11 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 
 /* Guest banner */
 .guest-banner {
-    background: #fef3c7;
-    border-bottom: 1px solid #f59e0b;
+    background: var(--warning-soft);
+    border-bottom: 1px solid var(--warning);
     padding: 8px 24px;
     font-size: 13px;
-    color: #92400e;
+    color: var(--warning);
     text-align: center;
 }
 
@@ -3886,7 +3912,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
     font-size: 13px;
     font-weight: 500;
 }
-.status-badge.is-success { background: #d1fae5; color: #065f46; }
+.status-badge.is-success { background: var(--success-soft); color: var(--success); }
 
 /* Badge */
 .badge {
@@ -3970,7 +3996,7 @@ kbd { display: inline-block; padding: 2px 6px; font-size: 12px; font-family: inh
 }
 
 .dropdown-item--danger { color: var(--danger); }
-.dropdown-item--danger:hover { background: #fef2f2; }
+.dropdown-item--danger:hover { background: var(--danger-soft); }
 
 /* Footer */
 .app-footer {
@@ -5360,7 +5386,7 @@ const App = {
             `<span class="tag" style="background:${t.color};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
         ).join(' ');
 
-        const colors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899'];
+        const colors = ['#bf616a','#d08770','#ebcb8b','#a3be8c','#5e81ac','#b48ead','#88c0d0'];
         this.openModal('Tags', `
             ${assigned.length ? `<div class="card-detail-section"><h4>Assigned</h4><div class="card-tags">${assignedHtml}</div></div>` : ''}
             ${available.length ? `<div class="card-detail-section"><h4>Available</h4><div class="card-tags">${availableHtml}</div></div>` : ''}
@@ -5377,7 +5403,7 @@ const App = {
     },
 
     showNewTag(cardId = null) {
-        const colors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899'];
+        const colors = ['#bf616a','#d08770','#ebcb8b','#a3be8c','#5e81ac','#b48ead','#88c0d0'];
         this._pendingTagCardId = cardId;
         this.openModal('New Tag', `
             <div class="form-group"><label>Name</label><input type="text" id="new-tag-name" placeholder="e.g. Bug"></div>
@@ -6357,8 +6383,8 @@ const App = {
                     `).join('') || '<em class="text-no-desc">No tags</em>'}</div>
                     <div class="tag-picker">
                         <input type="text" id="settings-tag-name" placeholder="Tag name" class="tag-input">
-                        ${['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => `<span class="tag-color-dot" style="background:${c}" onclick="App.selectTagColor(this,'${c}')"></span>`).join('')}
-                        <input type="hidden" id="settings-tag-color" value="#3b82f6">
+                        ${['#bf616a','#d08770','#ebcb8b','#a3be8c','#5e81ac','#b48ead','#88c0d0'].map(c => `<span class="tag-color-dot" style="background:${c}" onclick="App.selectTagColor(this,'${c}')"></span>`).join('')}
+                        <input type="hidden" id="settings-tag-color" value="#5e81ac">
                         <button class="btn btn-primary btn-sm btn-shrink-0" onclick="App.createTagFromSettings()">Add</button>
                     </div>
                     </div>

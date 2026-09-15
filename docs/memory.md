@@ -44,3 +44,14 @@ Session checkpoints for continuity across sessions.
 - Project list index: added visual index numbers (1-9) via `.project-index` badge — 22px rounded square, muted text on `var(--bg)` background, `flex: 0 0 22px` to prevent growth. Added `.project-card-info { flex: 1; min-width: 0; }` to contain the index to its badge width.
 - SVG favicon: added inline data URI favicon matching uptime style — 32x32 rounded rect (`#334155`), white bold sans-serif "T." text. Inserted after `<meta charset="UTF-8">`.
 - Test count: 483 (all passing)
+
+## 2026-09-15
+
+- Adopted the Nord color scheme (nordtheme.com) across the app, matching the `emmmail` Nord design-system standard in the Bare initiative.
+- Replaced `:root` and `[data-theme="dark"]` tokens with Nord values: bg nord6/nord0, surface #fff/nord1, surface-hover nord5/nord2, border nord4/nord3, text nord0/nord6, primary nord10/nord8, danger nord11, success #5f8f68/nord14. Added `--nord0`–`--nord15`, `--on-primary`, `--warning`/`--warning-soft`, `--success-soft`, `--danger-soft`. Shadows tinted to Nord.
+- Accent text contrast: primary buttons/outline-hover/success toast now use `--on-primary` (white in light, nord0 in dark).
+- Recolored hardcoded Tailwind hexes to Nord vars: admin/member badges, guest banner (warning), success status badge, dropdown danger hover.
+- Favicon switched to nord2 rect + nord6 text.
+- Tag palette now Nord Aurora/Frost (`#bf616a #d08770 #ebcb8b #a3be8c #5e81ac #b48ead #88c0d0`); default tag color nord10 (`#5e81ac`), default column color nord3 (`#4c566a`).
+- Bumped version 0.1.0 → 0.2.0 (`APP_VERSION`, `package.json`, tests).
+- Verified computed CSS vars for light + dark via terminal-browser. Test count: 483 (all passing).
