@@ -1362,7 +1362,7 @@ assert_true(str_contains($html, 'forcedBullet'), 'Turndown forces OL to bullets'
 // marked.js configured for target="_blank"
 assert_true(str_contains($html, 'target="_blank"') || str_contains($html, "target=\"_blank\""), 'marked.js link renderer adds target=_blank');
 assert_true(str_contains($html, 'noopener noreferrer'), 'Links get rel=noopener noreferrer');
-assert_true(preg_match('/link\s*\(\s*\{[^}]*\btext\b/', $html), 'marked.js link renderer uses v12 text param (not tokens)');
+assert_true(preg_match('/link\s*\(\s*href\s*,\s*title\s*,\s*text\s*\)/', $html), 'marked.js link renderer uses v12 positional params (href, title, text)');
 assert_true(!str_contains($html, 'parseInline'), 'marked.js renderer does not call removed parseInline');
 
 // Editor containers (Quill mounts on divs, not textareas)

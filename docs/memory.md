@@ -55,3 +55,9 @@ Session checkpoints for continuity across sessions.
 - Tag palette now Nord Aurora/Frost (`#bf616a #d08770 #ebcb8b #a3be8c #5e81ac #b48ead #88c0d0`); default tag color nord10 (`#5e81ac`), default column color nord3 (`#4c566a`).
 - Bumped version 0.1.0 → 0.2.0 (`APP_VERSION`, `package.json`, tests).
 - Verified computed CSS vars for light + dark via terminal-browser. Test count: 483 (all passing).
+
+## 2026-09-15 (bug fix)
+
+- Fixed card description links rendering as `undefined`: `marked.use({ renderer: { link(...) } })` used the v13 token-object destructuring `link({ href, title, text })`, but the app loads **marked@12.0.0** (positional args `link(href, title, text)`). So every link rendered as `<a href="undefined">undefined</a>`. Reproduced via node against the real CDN build; fixed signature to positional. `list(body)` was already correct for v12.
+- Updated the stale test at tests.php:1365 that enforced the wrong destructured signature → now asserts `link(href, title, text)`.
+- Test count: 483 (all passing).

@@ -4239,7 +4239,7 @@ let CSRF_TOKEN = '<?= $_SESSION['csrf_token'] ?>';
 // Configure marked.js: links open in new tab, force all lists to bullets
 marked.use({
     renderer: {
-        link({ href, title, text }) {
+        link(href, title, text) {
             const titleAttr = title ? ` title="${title}"` : '';
             return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
         },
