@@ -17,7 +17,7 @@ The entire application (backend logic, frontend markup, CSS, and JavaScript) liv
 - Team management with roles (admin and member)
 - Guest access via shareable token links
 - WYSIWYG editor with markdown shortcuts for card descriptions and comments
-- Typographic shortcuts: `:check:` → ✅, `->` → →, `--` → —, etc.
+- Typographic shortcuts, ligatures, e.g.: `:check:` becomes ✅, `->` becomes →, etc.
 - Fuzzy search across cards (title and description)
 - Keyboard shortcuts for common actions
 - Comments
@@ -194,20 +194,20 @@ On first login, each user receives a one-time recovery key (32 hex characters). 
 
 ### Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `⌘K` | Search cards |
-| `⌘S` | Save (in any form) |
-| `N` | Add card to first column |
-| `W` | Watch/unwatch card or project |
-| `⌘,` | Project settings |
-| `A` | Account |
-| `T` | Team |
-| `⌘G` | App settings |
-| `?` | Help |
-| `1`–`9` | Open project by index (on project list) |
-| `Backspace` | Back to project list (from board) |
-| `Esc` | Cancel / close modal / clear search |
+| Shortcut    | Action                                  |
+| ----------- | --------------------------------------- |
+| `⌘K`        | Search cards                            |
+| `⌘S`        | Save (in any form)                      |
+| `N`         | Add card to first column                |
+| `W`         | Watch/unwatch card or project           |
+| `⌘,`        | Project settings                        |
+| `A`         | Account                                 |
+| `T`         | Team                                    |
+| `⌘G`        | App settings                            |
+| `?`         | Help                                    |
+| `1`–`9`     | Open project by index (on project list) |
+| `Backspace` | Back to project list (from board)       |
+| `Esc`       | Cancel / close modal / clear search     |
 
 Single-letter shortcuts work when no input is focused. On Windows/Linux, use `Ctrl` instead of `⌘`.
 
@@ -232,6 +232,19 @@ For production, use Apache or Nginx with PHP-FPM. The key security consideration
   ```
 
   On shared hosting, a safe location is often a `private/` subdirectory inside your web root (e.g. `/home/user/web/example.com/private/tasssks.sqlite`). This directory is typically outside the web root and within `open_basedir`.
+
+- **Upload directory.** By default uploads are stored in `uploads/` next to `index.php`. Set `TASSSKS_UPLOAD_DIR` to move them outside the web root (recommended for version upgrades). Same examples as above apply:
+
+  ```bash
+  TASSSKS_UPLOAD_DIR=/var/data/tasssks-uploads php -S localhost:2020 index.php
+  ```
+
+- **Max upload size.** Defaults to 2 MB. Override with `TASSSKS_MAX_UPLOAD_SIZE` (value in bytes):
+
+  ```bash
+  TASSSKS_MAX_UPLOAD_SIZE=10485760 php -S localhost:2020 index.php  # 10 MB
+  ```
+
 - **Deny direct file access.** The application blocks requests to `.sqlite`, `.env`, and `.git` paths internally, but your web server should also enforce this as a second layer.
 - **Do not deploy `tests.php` to production.** It is a development-only file.
 

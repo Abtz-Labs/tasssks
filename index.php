@@ -29,8 +29,8 @@ if (php_sapi_name() === 'cli-server') {
 define('APP_NAME', 'Tasssks');
 define('APP_VERSION', '0.2.0');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
-define('UPLOAD_DIR', __DIR__ . '/uploads');
-define('MAX_UPLOAD_SIZE', 10 * 1024 * 1024); // 10MB
+define('UPLOAD_DIR', getenv('TASSSKS_UPLOAD_DIR') ?: __DIR__ . '/uploads');
+define('MAX_UPLOAD_SIZE', (int) (getenv('TASSSKS_MAX_UPLOAD_SIZE') ?: (2 * 1024 * 1024)));
 define('IMAGE_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
 define('GITHUB_RAW_URL', 'https://raw.githubusercontent.com/Abtz-Labs/tasssks/main/index.php');
 
