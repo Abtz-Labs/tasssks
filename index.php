@@ -3479,6 +3479,7 @@ $isGuestRequest = isset($_GET['guest']);
       transition: all var(--transition);
       text-decoration: none;
       white-space: nowrap;
+      position: relative;
     }
 
     .btn:disabled,
@@ -3524,6 +3525,19 @@ $isGuestRequest = isset($_GET['guest']);
       background: transparent;
       color: var(--danger);
       border-color: var(--danger);
+    }
+
+    .btn-danger > svg {
+      position: absolute;
+      left: 10px;
+    }
+
+    .btn-danger > span,
+    .btn-danger > :not(svg) {
+      margin: 0 auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .btn-danger:hover {
@@ -4598,9 +4612,16 @@ $isGuestRequest = isset($_GET['guest']);
 
     .card-detail-tags {
       display: flex;
-      align-items: center;
-      gap: 6px;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .card-detail-tags .tags-wrap {
+      flex: 1;
+      min-width: 0;
+      display: flex;
       flex-wrap: wrap;
+      gap: 6px;
     }
 
     .card-detail-tags .tag-add {
@@ -4644,9 +4665,29 @@ $isGuestRequest = isset($_GET['guest']);
       height: 30px;
       padding: 0 12px;
       font-size: 13px;
-      display: inline-flex;
+      display: flex;
       align-items: center;
-      gap: 4px;
+      justify-content: center;
+      position: relative;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .btn-watch > svg {
+      position: absolute;
+      left: 10px;
+    }
+
+    .btn-watch > span {
+      margin: 0 auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .btn-danger > svg {
+      position: absolute;
+      left: 10px;
     }
 
     .btn-comment {
@@ -4857,6 +4898,12 @@ $isGuestRequest = isset($_GET['guest']);
       display: flex;
       flex-direction: column;
       gap: 4px;
+      align-items: stretch;
+      width: 150px;
+    }
+
+    .card-detail-actions-col .btn {
+      justify-content: flex-start;
     }
 
     .time-section {
@@ -6880,7 +6927,7 @@ $isGuestRequest = isset($_GET['guest']);
                 </div>
                 <div class="card-detail-actions-col">
                     ${watchBtn}
-                    ${!this.isGuest ? `<button class="btn btn-ghost btn-watch" onclick="App.toggleTimeEntries(${cardId})">&#9201; <span id="time-total-${cardId}">${card.total_minutes ? this.formatMinutes(card.total_minutes) : '0m'}</span></button>` : ''}
+                    ${!this.isGuest ? `<button class="btn btn-ghost btn-watch" onclick="App.toggleTimeEntries(${cardId})"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> <span id="time-total-${cardId}">${card.total_minutes ? this.formatMinutes(card.total_minutes) : '0m'}</span></button>` : ''}
                 </div>
             </div>
             <div id="time-section-${cardId}" class="hidden time-section">
@@ -6906,14 +6953,23 @@ $isGuestRequest = isset($_GET['guest']);
                 <div id="time-entries-${cardId}"></div>
             </div>
             <div class="card-detail-section card-detail-tags">
-                ${tagsHtml}
-                ${!this.isGuest || this.currentProject.guest_can_create_cards ? `<span class="tag tag-add" onclick="App.showTagPicker(${cardId})">+</span>` : ''}
-                ${!this.isGuest ? `<select id="card-column-select" class="btn btn-ghost btn-watch" onchange="App.moveCardToColumn(${cardId}, parseInt(this.value))" style="appearance:auto;padding-right:24px;width:auto;max-width:118px;margin-left:auto;height:30px">
-                    ${this.columns.map(c => `<option value="${c.id}" ${c.id == card.column_id ? 'selected' : ''}>${this.esc(c.name)}</option>`).join('')}
-                </select>` : ''}
+                <div class="tags-wrap">
+                    ${tagsHtml}
+                    ${!this.isGuest || this.currentProject.guest_can_create_cards ? `<span class="tag tag-add" onclick="App.showTagPicker(${cardId})">+</span>` : ''}
+                </div>
+                ${!this.isGuest ? `
+                    <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;width:150px">
+                        <select id="card-column-select" class="btn btn-ghost btn-watch" onchange="App.moveCardToColumn(${cardId}, parseInt(this.value))" style="appearance:auto;padding-right:24px;height:30px;width:100%">
+                            ${this.columns.map(c => `<option value="${c.id}" ${c.id == card.column_id ? 'selected' : ''}>${this.esc(c.name)}</option>`).join('')}
+                        </select>
+                        <button class="btn btn-danger btn-sm" onclick="App.deleteCard(${cardId})" style="width:100%">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                            Delete
+                        </button>
+                    </div>` : ''}
             </div>
             <div class="card-detail-section">
-                <h4>Description ${!this.isGuest ? `<button class="btn btn-ghost btn-sm btn-edit-inline" onclick="App.editCardDescription(${cardId})">Edit</button>` : ''}</h4>
+                <h4>Description ${!this.isGuest ? `<button class="btn btn-ghost btn-sm btn-edit-inline" onclick="App.editCardDescription(${cardId})"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` : ''}</h4>
                 <div class="markdown-body">${descHtml}</div>
             </div>
             <div class="card-detail-section">
@@ -6935,10 +6991,8 @@ $isGuestRequest = isset($_GET['guest']);
                 <div id="card-comments">Loading...</div>
             </div>
         `;
-          const footer = !this.isGuest ? `
-            <button class="btn btn-danger" onclick="App.deleteCard(${cardId})">Delete Card</button>
-        ` : '';
-          const titleHtml = this.esc(card.title) + (!this.isGuest ? ` <button class="btn btn-ghost btn-sm btn-edit-title" onclick="App.editCardTitle(${cardId})">Edit</button>` : '');
+          const footer = '';
+          const titleHtml = this.esc(card.title) + (!this.isGuest ? ` <button class="btn btn-ghost btn-sm btn-edit-title" onclick="App.editCardTitle(${cardId})"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` : '');
           this.openModal(titleHtml, body, footer);
           setTimeout(() => {
             this._quillComment = _initQuill('#new-comment', {
@@ -6967,8 +7021,8 @@ $isGuestRequest = isset($_GET['guest']);
             const count = card.watcher_count || 0;
             this._cardWatching = watching;
             $(`#watch-btn-${cardId}`).html(watching ?
-              `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> Watching (${count})` :
-              `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Watch (${count})`);
+              `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span>Watching (${count})</span>` :
+              `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span>Watch (${count})</span>`);
           }
         },
 
@@ -7153,9 +7207,9 @@ $isGuestRequest = isset($_GET['guest']);
                         <div class="comment-header">
                             <span class="comment-author">${this.esc(c.author_name)} wrote:</span>
                             <span class="flex-center gap-2">
-                                ${isOwn ? `<button class="btn btn-ghost btn-sm btn-comment" onclick="App.editComment(${c.id},${cardId})">Edit</button>
-                                <button class="btn btn-ghost btn-sm btn-comment-danger" onclick="App.deleteComment(${c.id},${cardId})">Delete</button>` : ''}
                                 <span class="comment-date">${c.created_at}</span>
+                                ${isOwn ? `<button class="btn btn-ghost btn-sm btn-comment" onclick="App.editComment(${c.id},${cardId})"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                                <button class="btn btn-ghost btn-sm btn-comment-danger" onclick="App.deleteComment(${c.id},${cardId})"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>` : ''}
                             </span>
                         </div>
                         <div class="comment-body markdown-body" data-raw="${encodeURIComponent(safeContent)}">${rendered}</div>
@@ -8233,7 +8287,6 @@ $isGuestRequest = isset($_GET['guest']);
                     /div> <
                     /div> <
                     span class = "text-xs text-muted" > Billing cycle resets on the selected day of each month(e.g.25 th→ 24 th next month). < /span> <
-                    /div> <
                     /div> <
                     div id = "ptab-webhooks"
                     class = "settings-tab-content hidden" >
