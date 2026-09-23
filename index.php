@@ -29,7 +29,7 @@ if (php_sapi_name() === 'cli-server') {
 // ============================================================================
 
 define('APP_NAME', 'Tasssks');
-define('APP_VERSION', '0.2.1');
+define('APP_VERSION', '0.2.2');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', getenv('TASSSKS_UPLOAD_DIR') ?: __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', (int) (getenv('TASSSKS_MAX_UPLOAD_SIZE') ?: (2 * 1024 * 1024)));
@@ -8743,23 +8743,8 @@ $isGuestRequest = isset($_GET['guest']);
             const count = watchers.length;
             this._projectWatching = watching;
             $('#project-watch-btn').html(watching
-                ? ` < svg viewBox = "0 0 24 24"
-                    width = "14"
-                    height = "14"
-                    stroke = "currentColor"
-                    fill = "currentColor"
-                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
-                    cy = "12"
-                    r = "3"
-                    fill = "var(--surface)" / > < /svg> <span class="watch-label">Watching (${count})</span > `
-                : ` < svg viewBox = "0 0 24 24"
-                    width = "14"
-                    height = "14"
-                    stroke = "currentColor"
-                    fill = "none"
-                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
-                    cy = "12"
-                    r = "3" / > < /svg> <span class="watch-label">Watch (${count})</span > `);
+                ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span class="watch-label">Watching (${count})</span>`
+                : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span class="watch-label">Watch (${count})</span>`);
         });
     },
     watchProject() {
@@ -8791,23 +8776,8 @@ $isGuestRequest = isset($_GET['guest']);
     updateGuestWatchBtn() {
         const count = this._guestWatchCount || 0;
         $('#guest-watch-btn').html(this._guestWatching
-            ? ` < svg viewBox = "0 0 24 24"
-                    width = "14"
-                    height = "14"
-                    stroke = "currentColor"
-                    fill = "currentColor"
-                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
-                    cy = "12"
-                    r = "3"
-                    fill = "var(--surface)" / > < /svg> <span class="watch-label">Watching (${count})</span > `
-            : ` < svg viewBox = "0 0 24 24"
-                    width = "14"
-                    height = "14"
-                    stroke = "currentColor"
-                    fill = "none"
-                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
-                    cy = "12"
-                    r = "3" / > < /svg> <span class="watch-label">Watch (${count})</span > `);
+            ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span class="watch-label">Watching (${count})</span>`
+            : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span class="watch-label">Watch (${count})</span>`);
     },
     guestWatchProject() {
         this.api('guest_watch', { project_id: this.currentProject.id }, 'POST').done(() => {

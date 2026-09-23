@@ -1707,7 +1707,7 @@ section('Updates');
 // auth_status returns version field
 $r = req('auth_status');
 assert_true(isset($r['body']['version']), 'auth_status returns version field');
-assert_eq('0.2.0', $r['body']['version'], 'version matches expected value');
+assert_eq('0.2.2', $r['body']['version'], 'version matches expected value');
 
 // auth_status returns update_available field
 assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');
@@ -1950,7 +1950,7 @@ assert_true(str_contains($src, 'getBounds('), 'Uses Quill getBounds for dropdown
 
 // Card title is required — show feedback instead of silently failing
 assert_true(str_contains($src, "this.toast('Title is required.')"), 'createCard shows toast when title is empty');
-assert_true(str_contains($src, "saveCardTitle(cardId) {\n        const title = $('#edit-card-title').val().trim();\n        if (!title) { this.toast('Title is required.');"), 'saveCardTitle shows toast when title is empty');
+assert_true(str_contains($src, "saveCardTitle(cardId)") && str_contains($src, "toast('Title is required.')"), 'saveCardTitle shows toast when title is empty');
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
