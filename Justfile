@@ -19,9 +19,9 @@ start *args:
         fi
     done
     if [ "$mode" = "foreground" ]; then
-        php -S localhost:$port index.php
+        php -d realpath_cache_size=0 -d realpath_cache_ttl=0 -S localhost:$port index.php
     else
-        php -S localhost:$port index.php > /dev/null 2>&1 &
+        php -d realpath_cache_size=0 -d realpath_cache_ttl=0 -S localhost:$port index.php > /dev/null 2>&1 &
         echo $! > .server.pid
         echo "Server started on port $port (PID: $(cat .server.pid))"
     fi
