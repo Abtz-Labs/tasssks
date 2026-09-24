@@ -4035,7 +4035,9 @@ $isGuestRequest = isset($_GET['guest']);
       width: 100%;
       max-width: 600px;
       max-height: 80vh;
-      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
       transform: translateY(-10px);
       transition: transform var(--transition);
     }
@@ -4054,6 +4056,7 @@ $isGuestRequest = isset($_GET['guest']);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-shrink: 0;
     }
 
     .modal-header h2 {
@@ -4078,6 +4081,9 @@ $isGuestRequest = isset($_GET['guest']);
     .modal-body {
       padding: 24px;
       position: relative;
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
     }
 
     .modal-footer {
@@ -4086,6 +4092,7 @@ $isGuestRequest = isset($_GET['guest']);
       display: flex;
       justify-content: space-between;
       gap: 8px;
+      flex-shrink: 0;
     }
 
     .modal-footer:has(:only-child) {
@@ -4580,6 +4587,18 @@ $isGuestRequest = isset($_GET['guest']);
     .auth-container {
       max-width: 400px;
       margin: 60px auto;
+    }
+
+    .login-heading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .login-heading svg {
+      width: 1em;
+      height: 1em;
     }
 
     .auth-container+.auth-container {
@@ -5136,6 +5155,11 @@ $isGuestRequest = isset($_GET['guest']);
     .report-table td {
       padding: 8px;
       border-bottom: 1px solid var(--border);
+    }
+
+    .report-table th:not(:first-child),
+    .report-table td:not(:first-child) {
+      white-space: nowrap;
     }
 
     .token-input {
@@ -5772,7 +5796,12 @@ $isGuestRequest = isset($_GET['guest']);
   <!-- Login View -->
   <div id="view-login" class="projects-view hidden">
     <div class="auth-container text-center">
-      <h1 class="mb-6">&#128274; <span id="login-brand"><?= APP_NAME ?></span></h1>
+      <h1 class="mb-6 login-heading"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+      </svg> <span id="login-brand"><?= APP_NAME ?></span></h1>
       <form onsubmit="event.preventDefault();App.login()">
         <div class="form-group">
           <input type="text" id="login-email" placeholder="Email" autocomplete="email">
@@ -7746,7 +7775,7 @@ $isGuestRequest = isset($_GET['guest']);
                 grouped[k].minutes += Number(e.minutes);
                 grouped[k].entries.push(e);
               });
-              tableHtml = Object.entries(grouped).map(([title, g]) => `<tr><td>${this.esc(title)}</td><td>${this.formatMinutes(g.minutes)}</td><td>${g.entries.length}</td></tr>`).join('');
+              tableHtml = Object.entries(grouped).map(([title, g]) => `<tr><td>${this.esc(title)}</td><td>${this.formatMinutesHM(g.minutes)}</td><td>${g.entries.length}</td></tr>`).join('');
             } else if (groupBy === 'user') {
               const grouped = {};
               rows.forEach(e => {
@@ -7754,14 +7783,14 @@ $isGuestRequest = isset($_GET['guest']);
                 if (!grouped[k]) grouped[k] = 0;
                 grouped[k] += Number(e.minutes);
               });
-              tableHtml = Object.entries(grouped).map(([name, m]) => `<tr><td>${this.esc(name)}</td><td>${this.formatMinutes(m)}</td><td></td></tr>`).join('');
+              tableHtml = Object.entries(grouped).map(([name, m]) => `<tr><td>${this.esc(name)}</td><td>${this.formatMinutesHM(m)}</td><td></td></tr>`).join('');
             } else {
               const grouped = {};
               rows.forEach(e => {
                 if (!grouped[e.worked_at]) grouped[e.worked_at] = 0;
                 grouped[e.worked_at] += Number(e.minutes);
               });
-              tableHtml = Object.entries(grouped).sort((a, b) => b[0].localeCompare(a[0])).map(([date, m]) => `<tr><td>${this.formatDate(date)}</td><td>${this.formatMinutes(m)}</td><td></td></tr>`).join('');
+              tableHtml = Object.entries(grouped).sort((a, b) => b[0].localeCompare(a[0])).map(([date, m]) => `<tr><td>${this.formatDate(date)}</td><td>${this.formatMinutesHM(m)}</td><td></td></tr>`).join('');
             }
             const content = `
                 <div class="report-controls">
@@ -7789,7 +7818,7 @@ $isGuestRequest = isset($_GET['guest']);
                 </div>
                 ${periodLabel ? `<div class="report-period-label text-sm text-muted mb-3">${periodLabel}</div>` : ''}
                 <div class="report-summary">
-                    <div class="report-stat"><strong>${this.formatMinutes(data.total_minutes)}</strong><span>Total</span></div>
+                    <div class="report-stat"><strong>${this.formatMinutesHM(data.total_minutes)}</strong><span>Total</span></div>
                     <div class="report-stat"><strong>${data.entry_count}</strong><span>Entries</span></div>
                     <div class="report-stat"><strong>${data.avg_per_day ? this.formatMinutes(data.avg_per_day) : '0m'}</strong><span>Avg/day</span></div>
                 </div>
@@ -8876,6 +8905,15 @@ $isGuestRequest = isset($_GET['guest']);
                     if (y) parts.push(`${y}y`);
                     if (mo) parts.push(`${mo}mo`);
                     if (d) parts.push(`${d}d`);
+                    if (h) parts.push(`${h}h`);
+                    if (mins || !parts.length) parts.push(`${mins}m`);
+                    return parts.join(' ');
+                  },
+                  formatMinutesHM(m) {
+                    m = Math.max(0, Math.floor(m));
+                    const h = Math.floor(m / 60);
+                    const mins = m % 60;
+                    const parts = [];
                     if (h) parts.push(`${h}h`);
                     if (mins || !parts.length) parts.push(`${mins}m`);
                     return parts.join(' ');

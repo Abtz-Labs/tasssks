@@ -61,3 +61,10 @@ Session checkpoints for continuity across sessions.
 - Fixed card description links rendering as `undefined`: `marked.use({ renderer: { link(...) } })` used the v13 token-object destructuring `link({ href, title, text })`, but the app loads **marked@12.0.0** (positional args `link(href, title, text)`). So every link rendered as `<a href="undefined">undefined</a>`. Reproduced via node against the real CDN build; fixed signature to positional. `list(body)` was already correct for v12.
 - Updated the stale test at tests.php:1365 that enforced the wrong destructured signature → now asserts `link(href, title, text)`.
 - Test count: 483 (all passing).
+
+## 2026-09-25
+
+- Login heading now uses the header's four-square SVG instead of the lock emoji. Added `.login-heading` CSS (flex, centered, `gap:8px`, `svg` sized `1em`). No inline styles.
+- Modal: header and footer stay fixed; only `.modal-body` scrolls. `.modal` is now `display:flex; flex-direction:column; overflow:hidden`; `.modal-body` is `flex:1; overflow-y:auto; min-height:0`; header/footer `flex-shrink:0`.
+- Time Report TOTAL stat and Hours column (all groupings: card/user/date) show hours+minutes only (e.g. `98h 49m`) via new `formatMinutesHM()` helper — no day/month/year rollover. `formatMinutes()` unchanged elsewhere. Hours/Entries columns nowrap.
+- Test count: 483 (all passing).
