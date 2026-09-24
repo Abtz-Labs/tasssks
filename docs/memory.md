@@ -68,3 +68,9 @@ Session checkpoints for continuity across sessions.
 - Modal: header and footer stay fixed; only `.modal-body` scrolls. `.modal` is now `display:flex; flex-direction:column; overflow:hidden`; `.modal-body` is `flex:1; overflow-y:auto; min-height:0`; header/footer `flex-shrink:0`.
 - Time Report TOTAL stat and Hours column (all groupings: card/user/date) show hours+minutes only (e.g. `98h 49m`) via new `formatMinutesHM()` helper — no day/month/year rollover. `formatMinutes()` unchanged elsewhere. Hours/Entries columns nowrap.
 - Test count: 483 (all passing).
+
+## 2026-09-25 (refetch on focus)
+
+- Mimicked vue-query `refetchOnWindowFocus`: `window` `focus` + `document` `visibilitychange` listeners call new `refetchActiveView()`, which reloads the active view (`refreshBoard()` on board, `loadProjects()` on projects).
+- Guards prevent clobbering live UI: skips when tab hidden, any request in flight (`_activeRequests` counter in `api()`), modal open, card open, or an input/textarea/select/contenteditable is focused. No interval polling — option A only.
+- Test count: 488 (all passing).

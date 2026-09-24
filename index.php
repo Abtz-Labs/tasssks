@@ -6150,6 +6150,7 @@ $isGuestRequest = isset($_GET['guest']);
         user: null,
         unreadCounts: {},
         appName: '<?= APP_NAME ?>',
+        _activeRequests: 0,
         _pendingTagCardId: null,
         _quill: null,
         _quillComment: null,
@@ -6161,6 +6162,11 @@ $isGuestRequest = isset($_GET['guest']);
 
           window.addEventListener('hashchange', () => {
             if (!this._navigating) this.handleRoute();
+          });
+
+          window.addEventListener('focus', () => this.refetchActiveView());
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') this.refetchActiveView();
           });
 
           $(document).on('click', e => {
@@ -6460,7 +6466,8 @@ $isGuestRequest = isset($_GET['guest']);
           }
           const headers = {};
           if (method === 'POST') headers['X-CSRF-Token'] = CSRF_TOKEN;
-          return $.ajax({
+          this._activeRequests++;
+          const req = $.ajax({
             url,
             method,
             headers,
@@ -6469,6 +6476,10 @@ $isGuestRequest = isset($_GET['guest']);
             processData: false,
             dataType: 'json'
           });
+          req.always(() => {
+            this._activeRequests = Math.max(0, this._activeRequests - 1);
+          });
+          return req;
         },
 
         // PROJECTS
@@ -8751,6 +8762,19 @@ $isGuestRequest = isset($_GET['guest']);
     refreshBoard() {
         if (this.currentProject) {
             this.api('list_columns', { project_id: this.currentProject.id }).done(cols => { this.columns = cols; this.loadBoard(this.currentProject.id); });
+        }
+    },
+
+    refetchActiveView() {
+        if (document.visibilityState === 'hidden') return;
+        if (this._activeRequests > 0) return;
+        if ($('#modal-overlay').hasClass('active')) return;
+        if (this._openCardId) return;
+        if ($(document.activeElement).is('input, textarea, select, [contenteditable="true"]')) return;
+        if (!$('#view-board').hasClass('hidden') && this.currentProject) {
+            this.refreshBoard();
+        } else if (!$('#view-projects').hasClass('hidden')) {
+            this.loadProjects();
         }
     },
 

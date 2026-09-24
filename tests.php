@@ -1952,6 +1952,13 @@ assert_true(str_contains($src, 'getBounds('), 'Uses Quill getBounds for dropdown
 assert_true(str_contains($src, "this.toast('Title is required.')"), 'createCard shows toast when title is empty');
 assert_true(str_contains($src, "saveCardTitle(cardId)") && str_contains($src, "toast('Title is required.')"), 'saveCardTitle shows toast when title is empty');
 
+// Refetch on window focus (vue-query-like refetchOnWindowFocus)
+assert_true(str_contains($src, 'refetchActiveView('), 'refetchActiveView helper defined');
+assert_true(str_contains($src, "addEventListener('focus'"), 'Window focus listener registered');
+assert_true(str_contains($src, "addEventListener('visibilitychange'"), 'Visibility change listener registered');
+assert_true(str_contains($src, "hasClass('active')") && str_contains($src, 'refetchActiveView'), 'refetchActiveView guards against open modal');
+assert_true(str_contains($src, '_activeRequests'), 'In-flight request counter prevents overlapping refetches');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
 if ($failed === 0) {
