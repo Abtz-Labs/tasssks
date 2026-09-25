@@ -1991,12 +1991,50 @@ assert_true(str_contains($src, 'ondblclick') && str_contains($src, 'editCardTitl
 assert_true(str_contains($src, 'btn-edit-title') && str_contains($src, 'editCardTitleInline'), 'edit button calls editCardTitleInline');
 assert_true(!str_contains($src, 'editCardTitle(') || str_contains($src, 'editCardTitleInline('), 'old editCardTitle modal removed');
 
+// Card description inline editing (no separate modal)
+assert_true(str_contains($src, 'editCardDescriptionInline('), 'editCardDescriptionInline helper defined');
+assert_true(str_contains($src, 'saveCardDescriptionInline('), 'saveCardDescriptionInline helper defined');
+assert_true(!str_contains($src, 'editCardDescription(') || str_contains($src, 'editCardDescriptionInline('), 'old editCardDescription modal removed');
+
 // Refetch on window focus (vue-query-like refetchOnWindowFocus)
 assert_true(str_contains($src, 'refetchActiveView('), 'refetchActiveView helper defined');
 assert_true(str_contains($src, "addEventListener('focus'"), 'Window focus listener registered');
 assert_true(str_contains($src, "addEventListener('visibilitychange'"), 'Visibility change listener registered');
 assert_true(str_contains($src, "hasClass('active')") && str_contains($src, 'refetchActiveView'), 'refetchActiveView guards against open modal');
 assert_true(str_contains($src, '_activeRequests'), 'In-flight request counter prevents overlapping refetches');
+
+// ─── TAG FILTER ──────────────────────────────────────────
+section('Tag Filter');
+
+$src = file_get_contents(__DIR__ . '/index.php');
+
+// Filter button exists in toolbar
+assert_true(str_contains($src, 'tag-filter-btn'), 'tag-filter-btn CSS class defined');
+assert_true(str_contains($src, 'toggleTagFilter('), 'toggleTagFilter JS function referenced');
+assert_true(str_contains($src, 'applyTagFilter('), 'applyTagFilter JS function referenced');
+assert_true(str_contains($src, 'clearTagFilter('), 'clearTagFilter JS function referenced');
+
+// Filter state
+assert_true(str_contains($src, '_activeFilters'), '_activeFilters state variable used');
+assert_true(str_contains($src, 'new Set()') || str_contains($src, '_activeFilters ='), '_activeFilters initialized as Set');
+
+// Filter dropdown markup
+assert_true(str_contains($src, 'tag-filter-dropdown'), 'tag-filter-dropdown class defined');
+assert_true(str_contains($src, 'tag-filter-row'), 'tag-filter-row class defined');
+assert_true(str_contains($src, 'tag-filter-apply'), 'tag-filter-apply button class defined');
+
+// Filter logic in renderBoard
+assert_true(str_contains($src, '_activeFilters.size') || str_contains($src, '_activeFilters.has'), 'renderBoard checks _activeFilters');
+
+// Filter clears on project switch
+assert_true(str_contains($src, '_activeFilters') && str_contains($src, 'loadBoard('), '_activeFilters cleared on project load');
+
+// Filter count badge
+assert_true(str_contains($src, 'filter-count') || str_contains($src, 'filter-badge'), 'filter count badge element exists');
+
+// CSS for filter dropdown
+assert_true(str_contains($src, '.tag-filter-dropdown'), 'tag-filter-dropdown CSS rule defined');
+assert_true(str_contains($src, '.tag-filter-row'), 'tag-filter-row CSS rule defined');
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";

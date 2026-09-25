@@ -86,3 +86,17 @@ Session checkpoints for continuity across sessions.
 - Card title editing is now inline: double-click the title or click the edit pencil icon. The `#modal-title` span is replaced with an input, saved on blur/Enter, cancelled on Escape. Matches column name editing pattern.
 - Removed `editCardTitle()` + `saveCardTitle()` (separate modal) → replaced with `editCardTitleInline(cardId)`.
 - CSS: `.card-title-text` (cursor:default), `.inline-edit-input` (flex:1, 18px bold). h2 flexes during editing. Test count: 502 (all passing).
+
+## 2026-09-25 (inline description edit)
+
+- Card description editing is now inline: clicking the pencil replaces the `.markdown-body` div with a Quill editor + Save/Cancel buttons, no separate modal. `editCardDescriptionInline`, `saveCardDescriptionInline`, `cancelEditDescriptionInline`. Original HTML stored in `_editDescOriginalHtml` for cancel restore. Test count: 505 (all passing).
+
+## 2026-09-25 (modal body restructure)
+
+- Modal body restructured: `.modal-body` now `overflow: visible` (no clipping), inner `.modal-body-scroll` handles scrolling (`overflow-y: auto`). Quill link tooltip and card-ref dropdown render fully visible. `openModal()` targets `.modal-body-scroll`. Mobile padding moved to `.modal-body-scroll`. Test count: 505 (all passing).
+
+## 2026-09-25 (tag filter)
+
+- Tag filter for the board: filter funnel button between search and Watch button. Multi-select dropdown with project tags (checkbox + color dot + name). "Apply" button applies filter, "Clear" resets.
+- Client-side filtering in `renderBoard()`: cards filtered by `_activeFilters` Set (OR logic — card shown if any selected tag matches). Search re-applies after filter changes.
+- Filter count badge on button when active. Dropdown closes on click-outside. `_activeFilters` cleared on project switch. Guest toolbar also gets the filter button + badge. Test count: 519 (all passing).

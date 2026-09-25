@@ -3601,7 +3601,7 @@ $isGuestRequest = isset($_GET['guest']);
     .quill-wrap {
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      overflow: hidden;
+      overflow: visible;
       background: var(--surface);
     }
 
@@ -3609,6 +3609,18 @@ $isGuestRequest = isset($_GET['guest']);
       border: none;
       background: transparent;
       padding: 4px 8px;
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+
+    .ql-tooltip {
+      position: absolute;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      white-space: nowrap;
     }
 
     .quill-wrap .ql-toolbar .ql-formats {
@@ -3633,6 +3645,7 @@ $isGuestRequest = isset($_GET['guest']);
     .quill-wrap .ql-container.ql-snow {
       border: none;
       font-size: 14px;
+      position: relative;
     }
 
     .quill-wrap .ql-editor {
@@ -4084,11 +4097,17 @@ $isGuestRequest = isset($_GET['guest']);
     }
 
     .modal-body {
-      padding: 24px;
-      position: relative;
+      padding: 0;
       flex: 1;
-      overflow-y: auto;
       min-height: 0;
+      overflow: visible;
+      position: relative;
+    }
+
+    .modal-body-scroll {
+      padding: 24px;
+      overflow-y: auto;
+      height: 100%;
     }
 
     .modal-footer {
@@ -5545,6 +5564,155 @@ $isGuestRequest = isset($_GET['guest']);
       color: var(--text);
     }
 
+    /* Tag Filter */
+    .tag-filter-wrap {
+      position: relative;
+    }
+
+    .tag-filter-btn {
+      height: 34px;
+      padding: 0 10px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color var(--transition), background var(--transition);
+      white-space: nowrap;
+    }
+
+    .tag-filter-btn:hover {
+      background: var(--surface-hover);
+    }
+
+    .tag-filter-btn.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
+    .tag-filter-btn svg {
+      flex-shrink: 0;
+    }
+
+    .filter-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      background: var(--primary);
+      color: var(--on-primary);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .tag-filter-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 100;
+      min-width: 220px;
+      max-width: 300px;
+      max-height: 360px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      overflow: hidden;
+      flex-direction: column;
+    }
+
+    .tag-filter-dropdown.open {
+      display: flex;
+    }
+
+    .tag-filter-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 4px 0;
+    }
+
+    .tag-filter-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background var(--transition);
+    }
+
+    .tag-filter-row:hover {
+      background: var(--surface-hover);
+    }
+
+    .tag-filter-row input[type="checkbox"] {
+      accent-color: var(--primary);
+      flex-shrink: 0;
+    }
+
+    .tag-filter-row .tag-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .tag-filter-actions {
+      display: flex;
+      gap: 8px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .tag-filter-apply {
+      flex: 1;
+      padding: 6px 12px;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--primary);
+      color: var(--on-primary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity var(--transition);
+    }
+
+    .tag-filter-apply:hover {
+      opacity: 0.9;
+    }
+
+    .tag-filter-clear {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+
+    .tag-filter-clear:hover {
+      background: var(--surface-hover);
+    }
+
+    .tag-filter-empty {
+      padding: 12px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
     /* Utilities */
     .hidden {
       display: none !important;
@@ -5608,7 +5776,7 @@ $isGuestRequest = isset($_GET['guest']);
         padding: 16px;
       }
 
-      .modal-body {
+      .modal-body-scroll {
         padding: 16px;
       }
 
@@ -5865,7 +6033,7 @@ $isGuestRequest = isset($_GET['guest']);
         <h2 id="modal-title">Modal</h2>
         <button class="modal-close" onclick="App.closeModal()">&times;</button>
       </div>
-      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-body" id="modal-body"><div class="modal-body-scroll"></div></div>
       <div class="modal-footer" id="modal-footer"></div>
     </div>
   </div>
@@ -6089,7 +6257,7 @@ $isGuestRequest = isset($_GET['guest']);
       if (!_cardRefDropdown) {
         _cardRefDropdown = document.createElement('div');
         _cardRefDropdown.className = 'card-ref-dropdown';
-        const modal = document.querySelector('.modal-body') || document.body;
+        const modal = document.querySelector('.modal-body-scroll') || document.body;
         modal.appendChild(_cardRefDropdown);
       }
       let _matches = [];
@@ -6172,6 +6340,7 @@ $isGuestRequest = isset($_GET['guest']);
         unreadCounts: {},
         appName: '<?= APP_NAME ?>',
         _activeRequests: 0,
+        _activeFilters: new Set(),
         _pendingTagCardId: null,
         _quill: null,
         _quillComment: null,
@@ -6193,6 +6362,9 @@ $isGuestRequest = isset($_GET['guest']);
           $(document).on('click', e => {
             if (!$(e.target).closest('.dropdown').length) {
               $('.dropdown-menu').removeClass('open');
+            }
+            if (!$(e.target).closest('.tag-filter-wrap').length) {
+              $('#tag-filter-dropdown').removeClass('open');
             }
           });
 
@@ -6559,6 +6731,7 @@ $isGuestRequest = isset($_GET['guest']);
         },
 
         openProject(id) {
+          this._activeFilters = new Set();
           this._navigating = true;
           history.replaceState(null, '', `#project/${id}`);
           this._navigating = false;
@@ -6678,6 +6851,13 @@ $isGuestRequest = isset($_GET['guest']);
                 <span class="search-count" id="search-count"></span>
                 <button class="search-clear" id="search-clear" onclick="App.clearSearch()">&times;</button>
             </div>`;
+            actions += `<div class="tag-filter-wrap">
+                    <button class="tag-filter-btn" onclick="App.toggleTagFilter(event)">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    <span class="settings-label">Filter</span>
+                </button>
+                <div class="tag-filter-dropdown" id="tag-filter-dropdown"></div>
+            </div>`;
             actions += `<button class="btn btn-ghost btn-sm" id="project-watch-btn" onclick="App._projectWatching ? App.unwatchProject() : App.watchProject()">...</button>`;
             actions += `<button class="btn btn-ghost btn-sm" onclick="App.showTimeReport()"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> <span class="settings-label">Report</span></button>`;
             if (isOwner) {
@@ -6686,6 +6866,11 @@ $isGuestRequest = isset($_GET['guest']);
             actions += this.renderUserMenu();
             $('#navbar-actions').html(actions);
             this.loadProjectWatchState();
+            if (this._activeFilters && this._activeFilters.size > 0) {
+              const $btn = $('.tag-filter-btn');
+              $btn.addClass('active');
+              $btn.find('.settings-label').html(`Filter <span class="filter-count">${this._activeFilters.size}</span>`);
+            }
           } else {
             $('#breadcrumb').html(`<span class="breadcrumb-sep">&gt;</span> <strong>${this.esc(this.currentProject.name)}</strong>`);
             let guestActions = `<div class="search-wrapper">
@@ -6693,6 +6878,13 @@ $isGuestRequest = isset($_GET['guest']);
                 <input type="text" id="board-search" placeholder="Search cards..." oninput="App.searchCards(this.value)">
                 <span class="search-count" id="search-count"></span>
                 <button class="search-clear" id="search-clear" onclick="App.clearSearch()">&times;</button>
+            </div>`;
+            guestActions += `<div class="tag-filter-wrap">
+                    <button class="tag-filter-btn" onclick="App.toggleTagFilter(event)">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    <span class="settings-label">Filter</span>
+                </button>
+                <div class="tag-filter-dropdown" id="tag-filter-dropdown"></div>
             </div>`;
             if (this.currentProject.guest_has_email) {
               guestActions += `<button class="btn btn-ghost btn-sm" id="guest-watch-btn" onclick="App._guestWatching ? App.guestUnwatchProject() : App.guestWatchProject()">...</button>`;
@@ -6709,13 +6901,21 @@ $isGuestRequest = isset($_GET['guest']);
             if (this.currentProject.guest_has_email) {
               this.loadGuestWatchState();
             }
+            if (this._activeFilters && this._activeFilters.size > 0) {
+              const $btn = $('.tag-filter-btn');
+              $btn.addClass('active');
+              $btn.find('.settings-label').html(`Filter <span class="filter-count">${this._activeFilters.size}</span>`);
+            }
             $('#guest-banner').text(`Hey ${this.guestName}! You are viewing this board as a guest.`).removeClass('hidden');
           }
 
           const board = $('#board').empty();
           this.columns.forEach((col, idx) => {
             const isFixed = idx === 0;
-            const colCards = this.cards.filter(c => c.column_id == col.id).sort((a, b) => a.position - b.position);
+            let colCards = this.cards.filter(c => c.column_id == col.id).sort((a, b) => a.position - b.position);
+            if (this._activeFilters && this._activeFilters.size > 0) {
+              colCards = colCards.filter(c => (c.tags || []).some(t => this._activeFilters.has(parseInt(t.id))));
+            }
             board.append(`
                 <div class="column${isFixed ? ' column-fixed' : ''}" data-id="${col.id}">
                     <div class="column-header"${isFixed ? '' : ' style="cursor:grab"'}>
@@ -7035,9 +7235,9 @@ $isGuestRequest = isset($_GET['guest']);
                         </button>
                     </div>` : ''}
             </div>
-            <div class="card-detail-section">
-                <h4>Description ${!this.isGuest ? `<button class="btn btn-ghost btn-sm btn-edit-inline" onclick="App.editCardDescription(${cardId})"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` : ''}</h4>
-                <div class="markdown-body">${descHtml}</div>
+            <div class="card-detail-section" id="desc-section-${cardId}">
+                <h4>Description ${!this.isGuest ? `<button id="desc-edit-btn-${cardId}" class="btn btn-ghost btn-sm btn-edit-inline" onclick="App.editCardDescriptionInline(${cardId})"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` : ''}</h4>
+                <div class="markdown-body" id="desc-content-${cardId}">${descHtml}</div>
             </div>
             <div class="card-detail-section">
                 <h4>Attachments</h4>
@@ -7164,27 +7364,64 @@ $isGuestRequest = isset($_GET['guest']);
           });
         },
 
-        editCardDescription(cardId) {
+        editCardDescriptionInline(cardId) {
+          const content = document.getElementById(`desc-content-${cardId}`);
+          if (!content) return;
           const card = this.cards.find(c => c.id == cardId);
           const html = card.description ? marked.parse(card.description) : '';
-          this.openModal('Edit Description', `
-            <div class="form-group"><div class="quill-wrap"><div id="edit-card-desc"></div></div></div>
-        `, `
-            <button class="btn btn-ghost" onclick="App.closeModal();setTimeout(()=>App.openCard(${cardId}),100)">Cancel</button>
-            <button class="btn btn-primary" onclick="App.saveCardDescription(${cardId})">Save</button>
-        `);
+          this._editDescOriginalHtml = content.outerHTML;
+          const editBtn = document.getElementById(`desc-edit-btn-${cardId}`);
+          if (editBtn) editBtn.style.display = 'none';
+          const btnRow = `<div style="display:flex;gap:8px;margin-top:8px;justify-content:space-between"><button class="btn btn-ghost btn-sm" onclick="App.cancelEditDescriptionInline(${cardId})">Cancel</button><button class="btn btn-primary btn-sm" onclick="App.saveCardDescriptionInline(${cardId})">Save</button></div>`;
+          content.outerHTML = `<div id="desc-content-${cardId}" class="quill-wrap"><div id="edit-card-desc"></div></div>${btnRow}`;
           setTimeout(() => {
-            this._quill = _initQuill('#edit-card-desc', {
-              html
-            });
-            const len = this._quill.getLength();
-            this._quill.setSelection(len, 0);
-            this._quill.focus();
+            this._editDescQuill = _initQuill('#edit-card-desc', { html });
+            this._editDescKeyHandler = (e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                this.cancelEditDescriptionInline(cardId);
+              }
+            };
+            this._editDescQuill.root.addEventListener('keydown', this._editDescKeyHandler);
+            const len = this._editDescQuill.getLength();
+            this._editDescQuill.setSelection(len, 0);
+            this._editDescQuill.focus();
           }, 50);
         },
 
-        saveCardDescription(cardId) {
-          const description = this._quill ? _quillToMarkdown(this._quill) : '';
+        cancelEditDescriptionInline(cardId) {
+          const el = document.getElementById(`desc-content-${cardId}`);
+          if (!el) return;
+          const btnRow = el.nextElementSibling;
+          if (btnRow) btnRow.remove();
+          if (this._editDescQuill && this._editDescKeyHandler) {
+            this._editDescQuill.root.removeEventListener('keydown', this._editDescKeyHandler);
+          }
+          if (this._editDescOriginalHtml) {
+            el.outerHTML = this._editDescOriginalHtml;
+            delete this._editDescOriginalHtml;
+          }
+          delete this._editDescQuill;
+          delete this._editDescKeyHandler;
+          const editBtn = document.getElementById(`desc-edit-btn-${cardId}`);
+          if (editBtn) editBtn.style.display = '';
+        },
+
+        saveCardDescriptionInline(cardId) {
+          const description = this._editDescQuill ? _quillToMarkdown(this._editDescQuill) : '';
+          const el = document.getElementById(`desc-content-${cardId}`);
+          if (el) {
+            const btnRow = el.nextElementSibling;
+            if (btnRow) btnRow.remove();
+          }
+          if (this._editDescQuill && this._editDescKeyHandler) {
+            this._editDescQuill.root.removeEventListener('keydown', this._editDescKeyHandler);
+          }
+          delete this._editDescOriginalHtml;
+          delete this._editDescQuill;
+          delete this._editDescKeyHandler;
+          const editBtn = document.getElementById(`desc-edit-btn-${cardId}`);
+          if (editBtn) editBtn.style.display = '';
           this.api('update_card', {
             id: cardId,
             description
@@ -8845,7 +9082,7 @@ $isGuestRequest = isset($_GET['guest']);
     // MODAL
     openModal(title, body, footer) {
         $('#modal-title').html(title);
-        $('#modal-body').html(body);
+        $('#modal-body .modal-body-scroll').html(body);
         $('#modal-footer').html(footer || '');
         $('#modal-overlay').addClass('active');
     },
@@ -8964,6 +9201,68 @@ $isGuestRequest = isset($_GET['guest']);
                   clearSearch() {
                     $('#board-search').val('').focus();
                     this.searchCards('');
+                  },
+
+                  toggleTagFilter(e) {
+                    if (e) e.stopPropagation();
+                    const $dd = $('#tag-filter-dropdown');
+                    const isOpen = $dd.hasClass('open');
+                    if (isOpen) {
+                      $dd.removeClass('open');
+                      return;
+                    }
+                    const tags = this.tags || [];
+                    if (!tags.length) {
+                      $dd.html('<div class="tag-filter-empty">No tags in this project</div>').addClass('open');
+                      return;
+                    }
+                    const checked = this._activeFilters || new Set();
+                    let html = '<div class="tag-filter-list">';
+                    tags.forEach(t => {
+                      const id = parseInt(t.id);
+                      html += `<label class="tag-filter-row">
+                        <input type="checkbox" value="${id}" ${checked.has(id) ? 'checked' : ''}>
+                        <span class="tag-dot" style="background:${t.color}"></span>
+                        <span>${this.esc(t.name)}</span>
+                      </label>`;
+                    });
+                    html += '</div>';
+                    html += `<div class="tag-filter-actions">
+                        <button class="tag-filter-apply" onclick="App.applyTagFilter()">Apply</button>
+                        <button class="tag-filter-clear" onclick="App.clearTagFilter()">Clear</button>
+                    </div>`;
+                    $dd.html(html).addClass('open');
+                  },
+
+                  applyTagFilter() {
+                    const selected = new Set();
+                    $('#tag-filter-dropdown input[type="checkbox"]:checked').each(function() {
+                      selected.add(parseInt($(this).val()));
+                    });
+                    this._activeFilters = selected;
+                    const $btn = $('.tag-filter-btn');
+                    if (selected.size > 0) {
+                      $btn.addClass('active');
+                      $btn.find('.settings-label').html(`Filter <span class="filter-count">${selected.size}</span>`);
+                    } else {
+                      $btn.removeClass('active');
+                      $btn.find('.settings-label').text('Filter');
+                    }
+                    $('#tag-filter-dropdown').removeClass('open');
+                    this.renderBoard();
+                    const q = ($('#board-search').val() || '').trim();
+                    if (q) this.searchCards(q);
+                  },
+
+                  clearTagFilter() {
+                    this._activeFilters = new Set();
+                    const $btn = $('.tag-filter-btn');
+                    $btn.removeClass('active');
+                    $btn.find('.settings-label').text('Filter');
+                    $('#tag-filter-dropdown').removeClass('open');
+                    this.renderBoard();
+                    const q = ($('#board-search').val() || '').trim();
+                    if (q) this.searchCards(q);
                   },
 
                   updateColumnCounts() {
