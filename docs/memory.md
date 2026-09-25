@@ -80,3 +80,9 @@ Session checkpoints for continuity across sessions.
 - New cards can be inserted at the top of a column: optional `at_top` boolean in `apiCreateCard()`. Truthy shifts existing column positions +1 and inserts at 0; falsy keeps `MAX(position)+1`.
 - Create-card modal (`showAddCard()`) has a Position select (Bottom default / Top); `createCard()` sends `at_top`. Guests get the same choice in the first column. `N` shortcut defaults to Bottom.
 - Tests: new `Card Insert Position` section (order + returned position). Test count: 499 (all passing).
+
+## 2026-09-25 (inline card title edit)
+
+- Card title editing is now inline: double-click the title or click the edit pencil icon. The `#modal-title` span is replaced with an input, saved on blur/Enter, cancelled on Escape. Matches column name editing pattern.
+- Removed `editCardTitle()` + `saveCardTitle()` (separate modal) → replaced with `editCardTitleInline(cardId)`.
+- CSS: `.card-title-text` (cursor:default), `.inline-edit-input` (flex:1, 18px bold). h2 flexes during editing. Test count: 502 (all passing).

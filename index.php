@@ -4685,6 +4685,22 @@ $isGuestRequest = isset($_GET['guest']);
       vertical-align: middle;
     }
 
+    .card-title-text {
+      cursor: default;
+    }
+
+    .inline-edit-input {
+      font-size: 18px;
+      font-weight: 600;
+      flex: 1;
+      padding: 2px 6px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+      color: var(--text);
+      outline: none;
+    }
+
     .btn-watch {
       height: 30px;
       padding: 0 12px;
@@ -7043,7 +7059,11 @@ $isGuestRequest = isset($_GET['guest']);
             </div>
         `;
           const footer = '';
-          const titleHtml = this.esc(card.title) + (!this.isGuest ? ` <button class="btn btn-ghost btn-sm btn-edit-title" onclick="App.editCardTitle(${cardId})"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` : '');
+          const pencilSvg = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+          const checkSvg = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+          const titleText = `<span class="card-title-text" ondblclick="App.editCardTitleInline(${cardId})">${this.esc(card.title)}</span>`;
+          const editBtn = !this.isGuest ? ` <button id="card-title-btn" class="btn btn-ghost btn-sm btn-edit-title" onclick="App.editCardTitleInline(${cardId})">${pencilSvg}</button>` : '';
+          const titleHtml = titleText + editBtn;
           this.openModal(titleHtml, body, footer);
           setTimeout(() => {
             this._quillComment = _initQuill('#new-comment', {
@@ -7077,34 +7097,70 @@ $isGuestRequest = isset($_GET['guest']);
           }
         },
 
-        editCardTitle(cardId) {
+        editCardTitleInline(cardId) {
           const card = this.cards.find(c => c.id == cardId);
-          this.openModal('Edit Title', `
-            <div class="form-group"><label>Title</label><input type="text" id="edit-card-title" value="${this.esc(card.title)}"></div>
-        `, `
-            <button class="btn btn-ghost" onclick="App.closeModal();setTimeout(()=>App.openCard(${cardId}),100)">Cancel</button>
-            <button class="btn btn-primary" onclick="App.saveCardTitle(${cardId})">Save</button>
-        `);
-          setTimeout(() => {
-            $('#edit-card-title').on('input', function() {
-              _applyReplacements(this);
-            }).focus().select();
-          }, 50);
-        },
-
-        saveCardTitle(cardId) {
-          const title = $('#edit-card-title').val().trim();
-          if (!title) {
-            this.toast('Title is required.');
-            $('#edit-card-title').focus();
-            return;
+          const span = document.querySelector('#modal-title .card-title-text');
+          if (!span) return;
+          const current = card.title;
+          const pencilSvg = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+          const checkSvg = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+          const h2 = document.getElementById('modal-title');
+          const btn = document.getElementById('card-title-btn');
+          h2.style.display = 'flex';
+          h2.style.alignItems = 'center';
+          h2.style.gap = '8px';
+          h2.style.flex = '1';
+          h2.style.marginRight = '8px';
+          if (btn) {
+            btn.className = 'btn btn-primary btn-sm btn-edit-title';
+            btn.innerHTML = checkSvg;
           }
-          this.api('update_card', {
-            id: cardId,
-            title
-          }, 'POST').done(() => {
-            this.refreshBoard();
-            setTimeout(() => this.openCard(cardId), 200);
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = current;
+          input.className = 'inline-edit-input';
+          span.replaceWith(input);
+          input.focus();
+          input.select();
+          const restore = (val) => {
+            const newSpan = document.createElement('span');
+            newSpan.className = 'card-title-text';
+            newSpan.setAttribute('ondblclick', `App.editCardTitleInline(${cardId})`);
+            newSpan.textContent = val;
+            input.replaceWith(newSpan);
+            h2.style.display = '';
+            h2.style.alignItems = '';
+            h2.style.gap = '';
+            h2.style.flex = '';
+            h2.style.marginRight = '';
+            if (btn) {
+              btn.className = 'btn btn-ghost btn-sm btn-edit-title';
+              btn.innerHTML = pencilSvg;
+            }
+          };
+          const save = () => {
+            const val = input.value.trim();
+            if (!val) {
+              this.toast('Title is required.');
+              input.focus();
+              return;
+            }
+            restore(val);
+            if (val !== current) this.api('update_card', {
+              id: cardId,
+              title: val
+            }, 'POST').done(() => {
+              this.refreshBoard();
+            });
+          };
+          input.addEventListener('blur', save);
+          input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              input.removeEventListener('blur', save);
+              restore(current);
+            }
           });
         },
 

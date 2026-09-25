@@ -1984,7 +1984,12 @@ assert_true(str_contains($src, 'getBounds('), 'Uses Quill getBounds for dropdown
 
 // Card title is required — show feedback instead of silently failing
 assert_true(str_contains($src, "this.toast('Title is required.')"), 'createCard shows toast when title is empty');
-assert_true(str_contains($src, "saveCardTitle(cardId)") && str_contains($src, "toast('Title is required.')"), 'saveCardTitle shows toast when title is empty');
+
+// Card title inline editing (no separate modal)
+assert_true(str_contains($src, 'editCardTitleInline('), 'editCardTitleInline helper defined');
+assert_true(str_contains($src, 'ondblclick') && str_contains($src, 'editCardTitleInline'), 'title span has ondblclick for inline edit');
+assert_true(str_contains($src, 'btn-edit-title') && str_contains($src, 'editCardTitleInline'), 'edit button calls editCardTitleInline');
+assert_true(!str_contains($src, 'editCardTitle(') || str_contains($src, 'editCardTitleInline('), 'old editCardTitle modal removed');
 
 // Refetch on window focus (vue-query-like refetchOnWindowFocus)
 assert_true(str_contains($src, 'refetchActiveView('), 'refetchActiveView helper defined');
