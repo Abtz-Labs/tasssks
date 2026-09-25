@@ -3962,6 +3962,12 @@ $isGuestRequest = isset($_GET['guest']);
       transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
 
+    .sortable-drag-active,
+    .sortable-drag-active * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+    }
+
     .card-title {
       font-size: 14px;
       font-weight: 500;
@@ -6987,6 +6993,8 @@ $isGuestRequest = isset($_GET['guest']);
                   scrollSensitivity: 80,
                   scrollSpeed: 15,
                   bubbleScroll: true,
+                  onChoose: () => document.body.classList.add('sortable-drag-active'),
+                  onUnchoose: () => document.body.classList.remove('sortable-drag-active'),
                   onEnd: (evt) => {
                     const cardId = parseInt(evt.item.dataset.id);
                     const newColumnId = parseInt(evt.to.dataset.columnId);
@@ -7034,6 +7042,8 @@ $isGuestRequest = isset($_GET['guest']);
               scrollSensitivity: 80,
               scrollSpeed: 15,
               bubbleScroll: true,
+              onChoose: () => document.body.classList.add('sortable-drag-active'),
+              onUnchoose: () => document.body.classList.remove('sortable-drag-active'),
               onEnd: (evt) => {
                 const cardId = parseInt(evt.item.dataset.id);
                 const newColumnId = parseInt(evt.to.dataset.columnId);
