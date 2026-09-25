@@ -74,3 +74,9 @@ Session checkpoints for continuity across sessions.
 - Mimicked vue-query `refetchOnWindowFocus`: `window` `focus` + `document` `visibilitychange` listeners call new `refetchActiveView()`, which reloads the active view (`refreshBoard()` on board, `loadProjects()` on projects).
 - Guards prevent clobbering live UI: skips when tab hidden, any request in flight (`_activeRequests` counter in `api()`), modal open, card open, or an input/textarea/select/contenteditable is focused. No interval polling — option A only.
 - Test count: 488 (all passing).
+
+## 2026-09-25 (card insert position)
+
+- New cards can be inserted at the top of a column: optional `at_top` boolean in `apiCreateCard()`. Truthy shifts existing column positions +1 and inserts at 0; falsy keeps `MAX(position)+1`.
+- Create-card modal (`showAddCard()`) has a Position select (Bottom default / Top); `createCard()` sends `at_top`. Guests get the same choice in the first column. `N` shortcut defaults to Bottom.
+- Tests: new `Card Insert Position` section (order + returned position). Test count: 499 (all passing).

@@ -94,7 +94,7 @@ Add or rename columns from the project settings (gear icon in the board header).
 
 ### Cards
 
-Click "Add card" at the bottom of any column. Cards support:
+Click "Add card" at the bottom of any column. Choose **Top** or **Bottom** in the Position field to control where the new card lands. Cards support:
 
 - Title (required)
 - Description (Markdown)

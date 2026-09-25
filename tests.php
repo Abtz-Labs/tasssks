@@ -326,6 +326,40 @@ assert_eq(200, $r['status'], 'member can update card');
 $r = req('delete_card', ['id' => $cardId], 'POST', $memberCsrf, $memberCookie);
 assert_eq(200, $r['status'], 'member can delete card');
 
+// ─── CARD INSERT POSITION ────────────────────────────────
+section('Card Insert Position');
+
+$r = req('list_columns', ['project_id' => $adminProjectId]);
+$posColId = $r['body'][2]['id'] ?? 0;
+
+$r = req('create_card', ['column_id' => $posColId, 'title' => 'Pos First'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create first card in position test column');
+$posFirstId = $r['body']['id'];
+
+$r = req('create_card', ['column_id' => $posColId, 'title' => 'Pos Second'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create second card in position test column');
+$posSecondId = $r['body']['id'];
+assert_true($r['body']['position'] > 0, 'default create appends after existing card');
+
+$r = req('create_card', ['column_id' => $posColId, 'title' => 'Pos Top', 'at_top' => 1], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create card at top');
+assert_eq(0, $r['body']['position'], 'at_top create returns position 0');
+$posTopId = $r['body']['id'];
+
+$r = req('list_cards', ['project_id' => $adminProjectId]);
+$posCards = array_values(array_filter($r['body'], fn($c) => $c['column_id'] == $posColId));
+assert_eq(3, count($posCards), 'position test column has 3 cards');
+assert_eq($posTopId, $posCards[0]['id'], 'at_top card is first in column');
+assert_eq($posFirstId, $posCards[1]['id'], 'default card order preserved (first)');
+assert_eq($posSecondId, $posCards[2]['id'], 'default card order preserved (second)');
+
+$r = req('create_card', ['column_id' => $posColId, 'title' => 'Pos Newest Top', 'at_top' => 1], 'POST', $adminCsrf);
+$posNewestTopId = $r['body']['id'];
+$r = req('list_cards', ['project_id' => $adminProjectId]);
+$posCards = array_values(array_filter($r['body'], fn($c) => $c['column_id'] == $posColId));
+assert_eq($posNewestTopId, $posCards[0]['id'], 'second at_top card becomes first');
+assert_eq($posTopId, $posCards[1]['id'], 'previous top card shifted down');
+
 // ─── COMMENTS ────────────────────────────────────────────
 section('Comments');
 

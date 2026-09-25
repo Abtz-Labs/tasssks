@@ -1608,9 +1608,14 @@ function apiCreateCard(): void
     }
   }
 
-  $maxPos = $db->prepare("SELECT COALESCE(MAX(position), -1) + 1 as next_pos FROM cards WHERE column_id = ?");
-  $maxPos->execute([$columnId]);
-  $pos = $maxPos->fetch()['next_pos'];
+  if (!empty($input['at_top'])) {
+    $db->prepare("UPDATE cards SET position = position + 1 WHERE column_id = ?")->execute([$columnId]);
+    $pos = 0;
+  } else {
+    $maxPos = $db->prepare("SELECT COALESCE(MAX(position), -1) + 1 as next_pos FROM cards WHERE column_id = ?");
+    $maxPos->execute([$columnId]);
+    $pos = $maxPos->fetch()['next_pos'];
+  }
 
   $guest = getGuestInfo($row['project_id']);
   $authorName = $guest ? $guest['name'] : (getCurrentUser()['name'] ?? '');
@@ -6892,6 +6897,7 @@ $isGuestRequest = isset($_GET['guest']);
           this.openModal('New Card', `
             <div class="form-group"><label>Title</label><input type="text" id="new-card-title" placeholder="Card title"></div>
             <div class="form-group"><label>Description</label><div class="quill-wrap"><div id="new-card-desc"></div></div></div>
+            <div class="form-group"><label>Position</label><select id="new-card-position" class="select-full"><option value="bottom">Bottom</option><option value="top">Top</option></select></div>
         `, `<button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button> <button class="btn btn-primary" onclick="App.createCard(${columnId})">Add Card</button>`);
           setTimeout(() => {
             this._quill = _initQuill('#new-card-desc', {
@@ -6911,10 +6917,12 @@ $isGuestRequest = isset($_GET['guest']);
             return;
           }
           const description = this._quill ? _quillToMarkdown(this._quill) : '';
+          const atTop = $('#new-card-position').val() === 'top';
           this.api('create_card', {
             column_id: columnId,
             title,
-            description
+            description,
+            at_top: atTop
           }, 'POST').done(res => {
             const cardId = res.id;
             this.closeModal();
