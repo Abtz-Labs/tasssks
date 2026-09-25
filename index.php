@@ -335,7 +335,20 @@ function migrateDatabase(PDO $db): void
     }
   }
 
-  $db->exec('PRAGMA user_version = 7');
+  // Version 7 → 8: project sort position
+  if ($version < 8) {
+    $cols = $db->query("PRAGMA table_info(projects)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    if (!in_array('position', $cols)) {
+      $db->exec("ALTER TABLE projects ADD COLUMN position INTEGER DEFAULT 0");
+      // Backfill: oldest project = 0, newest = highest
+      $rows = $db->query("SELECT id FROM projects ORDER BY created_at ASC")->fetchAll(PDO::FETCH_COLUMN);
+      foreach ($rows as $i => $id) {
+        $db->prepare("UPDATE projects SET position = ? WHERE id = ?")->execute([$i, $id]);
+      }
+    }
+  }
+
+  $db->exec('PRAGMA user_version = 8');
 }
 
 // ============================================================================
@@ -712,6 +725,7 @@ if ($action) {
     'update_project' => apiUpdateProject(),
     'delete_project' => apiDeleteProject(),
     'guest_project_info' => apiGuestProjectInfo(),
+    'reorder_projects' => apiReorderProjects(),
 
     // Columns
     'list_columns' => apiListColumns(),
@@ -1251,7 +1265,7 @@ function apiListProjects(): void
   requireAuth();
   $user = getCurrentUser();
   $db = getDb();
-  $projects = $db->query("SELECT id, name, slug, created_at, guest_can_create_cards, guest_can_sort_cards, guest_can_view_time, week_start_day, cycle_reset_day FROM projects ORDER BY created_at DESC")->fetchAll();
+  $projects = $db->query("SELECT id, name, slug, created_at, guest_can_create_cards, guest_can_sort_cards, guest_can_view_time, week_start_day, cycle_reset_day FROM projects ORDER BY position ASC, created_at DESC")->fetchAll();
 
   foreach ($projects as &$project) {
     $stmt = $db->prepare("
@@ -1511,6 +1525,22 @@ function apiReorderColumns(): void
   $stmt = $db->prepare("UPDATE columns_ SET position = ? WHERE id = ? AND project_id = ?");
   foreach ($order as $pos => $id) {
     $stmt->execute([$pos, (int) $id, $projectId]);
+  }
+  jsonResponse(['ok' => true]);
+}
+
+function apiReorderProjects(): void
+{
+  requireAuth();
+  $input = getInput();
+  $order = $input['order'] ?? [];
+
+  if (!is_array($order)) jsonResponse(['error' => 'Invalid input'], 400);
+
+  $db = getDb();
+  $stmt = $db->prepare("UPDATE projects SET position = ? WHERE id = ?");
+  foreach ($order as $pos => $id) {
+    $stmt->execute([$pos, $id]);
   }
   jsonResponse(['ok' => true]);
 }
@@ -3785,13 +3815,14 @@ $isGuestRequest = isset($_GET['guest']);
     .projects-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 12px;
       margin-bottom: 32px;
     }
 
     .projects-header h1 {
       font-size: 28px;
       font-weight: 700;
+      margin-right: auto;
     }
 
     .project-card {
@@ -6022,6 +6053,10 @@ $isGuestRequest = isset($_GET['guest']);
   <div id="view-projects" class="projects-view hidden">
     <div class="projects-header">
       <h1>Projects</h1>
+      <div class="search-wrapper">
+        <span class="search-icon"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" id="project-search" placeholder="Search projects..." oninput="App.searchProjects(this.value)">
+      </div>
       <button class="btn btn-primary" onclick="App.showNewProjectModal()">+ New Project</button>
     </div>
     <div id="projects-list"></div>
@@ -6701,7 +6736,7 @@ $isGuestRequest = isset($_GET['guest']);
             const badgeHtml = unread ? `<span class="badge badge-muted">${badgeText}</span>` : '';
             const deleteBtn = p.is_owner ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();App.confirmDeleteProject('${p.id}','${this.escAttr(p.name)}')">Delete</button>` : '';
             const watchIcon = p.is_watching ? '<svg viewBox="0 0 24 24" width="14" height="14" stroke="var(--primary)" fill="none" stroke-width="2" title="Watching"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '';
-            return `<div class="project-card" onclick="App.openProject('${p.id}')">
+            return `<div class="project-card" data-id="${p.id}" onclick="App.openProject('${p.id}')">
                 <span class="project-index">${i + 1}</span>
                 <div class="project-card-info">
                     <h3>${this.esc(p.name)} ${watchIcon}</h3>
@@ -6713,6 +6748,42 @@ $isGuestRequest = isset($_GET['guest']);
                 </div>
             </div>`;
           }).join(''));
+          this.initProjectSortable();
+        },
+
+        initProjectSortable() {
+          const el = document.getElementById('projects-list');
+          if (!el || this._projectSortable) return;
+          this._projectSortable = new Sortable(el, {
+            animation: 150,
+            handle: '.project-card',
+            ghostClass: 'sortable-ghost',
+            onChoose: () => document.body.classList.add('sortable-drag-active'),
+            onUnchoose: () => document.body.classList.remove('sortable-drag-active'),
+            onEnd: () => {
+              const order = [...el.querySelectorAll('.project-card')].map(c => {
+                const p = this.projects.find(pr => pr.id === c.dataset.id);
+                return p ? p.id : null;
+              }).filter(Boolean);
+              this.api('reorder_projects', { order }, 'POST');
+              el.querySelectorAll('.project-card').forEach((c, i) => {
+                c.querySelector('.project-index').textContent = i + 1;
+              });
+            }
+          });
+        },
+
+        searchProjects(query) {
+          const q = query.toLowerCase().trim();
+          const $cards = $('#projects-list .project-card');
+          if (!q) {
+            $cards.show();
+            return;
+          }
+          $cards.each(function() {
+            const name = $(this).find('h3').text().toLowerCase();
+            $(this).toggle(name.includes(q));
+          });
         },
 
         showNewProjectModal() {

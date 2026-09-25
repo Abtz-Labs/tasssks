@@ -2036,6 +2036,30 @@ assert_true(str_contains($src, 'filter-count') || str_contains($src, 'filter-bad
 assert_true(str_contains($src, '.tag-filter-dropdown'), 'tag-filter-dropdown CSS rule defined');
 assert_true(str_contains($src, '.tag-filter-row'), 'tag-filter-row CSS rule defined');
 
+// ─── PROJECT SORT & SEARCH ──────────────────────────────
+section('Project Sort & Search');
+
+$src = file_get_contents(__DIR__ . '/index.php');
+
+// DB migration: position column on projects
+assert_true(str_contains($src, 'ALTER TABLE projects ADD COLUMN position'), 'migration adds position column to projects');
+assert_true(str_contains($src, "PRAGMA user_version = 8") || str_contains($src, 'user_version = 8'), 'migration version bumped to 8');
+
+// Backend: reorder_projects endpoint
+assert_true(str_contains($src, 'reorder_projects'), 'reorder_projects route exists');
+assert_true(str_contains($src, 'apiReorderProjects'), 'apiReorderProjects function defined');
+
+// Backend: list_projects orders by position
+assert_true(str_contains($src, 'ORDER BY position') && str_contains($src, 'list_projects'), 'list_projects orders by position');
+
+// Frontend: SortableJS on project list
+assert_true(str_contains($src, 'initProjectSortable'), 'initProjectSortable helper defined');
+assert_true(str_contains($src, "projects-list") && str_contains($src, 'Sortable'), 'SortableJS initialized on projects-list');
+
+// Frontend: project search
+assert_true(str_contains($src, 'searchProjects('), 'searchProjects function defined');
+assert_true(str_contains($src, 'project-search') || str_contains($src, 'projects-search'), 'project search input exists');
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
 if ($failed === 0) {

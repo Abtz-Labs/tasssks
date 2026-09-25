@@ -100,3 +100,10 @@ Session checkpoints for continuity across sessions.
 - Tag filter for the board: filter funnel button between search and Watch button. Multi-select dropdown with project tags (checkbox + color dot + name). "Apply" button applies filter, "Clear" resets.
 - Client-side filtering in `renderBoard()`: cards filtered by `_activeFilters` Set (OR logic — card shown if any selected tag matches). Search re-applies after filter changes.
 - Filter count badge on button when active. Dropdown closes on click-outside. `_activeFilters` cleared on project switch. Guest toolbar also gets the filter button + badge. Test count: 519 (all passing).
+
+## 2026-09-25 (project sort & search)
+
+- DB migration v8: added `position INTEGER DEFAULT 0` to `projects` table. Backfilled from `created_at ASC` (oldest=0). `list_projects` now orders by `position ASC, created_at DESC`.
+- `apiReorderProjects()` endpoint: accepts `order` array of project IDs, updates `position` column. Requires auth.
+- `initProjectSortable()`: SortableJS on `#projects-list` with `data-id` on `.project-card`. `onChoose`/`onUnchoose` toggle `sortable-drag-active` body class. `onEnd` sends `reorder_projects` API call and updates index badges.
+- Project search: input in `.projects-header` (between h1 and "+ New Project" button). `searchProjects(query)` filters `.project-card` by name (case-insensitive show/hide). Test count: 528 (all passing).
