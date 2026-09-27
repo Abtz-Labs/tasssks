@@ -360,6 +360,115 @@ $posCards = array_values(array_filter($r['body'], fn($c) => $c['column_id'] == $
 assert_eq($posNewestTopId, $posCards[0]['id'], 'second at_top card becomes first');
 assert_eq($posTopId, $posCards[1]['id'], 'previous top card shifted down');
 
+// ─── MOVE ALL CARDS ──────────────────────────────────────
+section('Move All Cards');
+
+// Isolated source + target columns so the default columns are not disturbed.
+$r = req('create_column', ['project_id' => $adminProjectId, 'name' => 'MASSRC'], 'POST', $adminCsrf);
+$maSrc = $r['body']['id'];
+$r = req('create_column', ['project_id' => $adminProjectId, 'name' => 'MASTGT'], 'POST', $adminCsrf);
+$maTgt = $r['body']['id'];
+
+// Target already holds two cards.
+$r = req('create_card', ['column_id' => $maTgt, 'title' => 'X'], 'POST', $adminCsrf);
+$maX = $r['body']['id'];
+$r = req('create_card', ['column_id' => $maTgt, 'title' => 'Y'], 'POST', $adminCsrf);
+$maY = $r['body']['id'];
+
+// Source holds three cards.
+$r = req('create_card', ['column_id' => $maSrc, 'title' => 'A'], 'POST', $adminCsrf);
+$maA = $r['body']['id'];
+$r = req('create_card', ['column_id' => $maSrc, 'title' => 'B'], 'POST', $adminCsrf);
+$maB = $r['body']['id'];
+$r = req('create_card', ['column_id' => $maSrc, 'title' => 'C'], 'POST', $adminCsrf);
+$maC = $r['body']['id'];
+
+$r = req('move_all_cards', ['column_id' => $maSrc], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'move all cards requires target_column_id');
+
+$r = req('move_all_cards', ['target_column_id' => $maTgt], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'move all cards requires column_id');
+
+$r = req('move_all_cards', ['column_id' => $maSrc, 'target_column_id' => $maSrc], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'move all cards rejects same source and target');
+
+$r = req('move_all_cards', ['column_id' => $maSrc, 'target_column_id' => 999999], 'POST', $adminCsrf);
+assert_eq(404, $r['status'], 'move all cards rejects unknown target column');
+
+$r = req('list_columns', ['project_id' => $memberProjectId]);
+$maForeignCol = $r['body'][0]['id'] ?? 0;
+$r = req('move_all_cards', ['column_id' => $maSrc, 'target_column_id' => $maForeignCol], 'POST', $adminCsrf);
+assert_eq(404, $r['status'], 'move all cards rejects target column from another project');
+
+$r = req('move_all_cards', ['column_id' => $maSrc, 'target_column_id' => $maTgt], 'POST', $memberCsrf, $memberCookie);
+assert_eq(403, $r['status'], 'member cannot move all cards in a project they do not own');
+
+$r = req('move_all_cards', ['column_id' => $maSrc, 'target_column_id' => $maTgt], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'move all cards succeeds');
+assert_eq(3, $r['body']['moved'], 'reports how many cards moved');
+
+$r = req('list_cards', ['project_id' => $adminProjectId]);
+$maSrcCards = array_values(array_filter($r['body'], fn($c) => $c['column_id'] == $maSrc));
+$maTgtCards = array_values(array_filter($r['body'], fn($c) => $c['column_id'] == $maTgt));
+assert_eq(0, count($maSrcCards), 'source column is empty after the move');
+assert_eq(5, count($maTgtCards), 'target column holds all five cards');
+
+// Source order is preserved and sits above the cards already in the target.
+assert_eq($maA, $maTgtCards[0]['id'], 'moved card A is first in target');
+assert_eq($maB, $maTgtCards[1]['id'], 'moved card B is second in target');
+assert_eq($maC, $maTgtCards[2]['id'], 'moved card C is third in target');
+assert_eq($maX, $maTgtCards[3]['id'], 'pre-existing target card X shifts down and keeps its order');
+assert_eq($maY, $maTgtCards[4]['id'], 'pre-existing target card Y shifts down and keeps its order');
+assert_eq([0, 1, 2, 3, 4], array_map(fn($c) => $c['position'], $maTgtCards), 'target positions stay contiguous 0-4');
+
+// Moving from an empty column changes nothing.
+$r = req('move_all_cards', ['column_id' => $maSrc, 'target_column_id' => $maTgt], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'move from an empty column succeeds');
+assert_eq(0, $r['body']['moved'], 'move from an empty column reports 0 moved');
+
+$r = req('list_cards', ['project_id' => $adminProjectId]);
+$maTgtCards = array_values(array_filter($r['body'], fn($c) => $c['column_id'] == $maTgt));
+assert_eq(5, count($maTgtCards), 'move from an empty column leaves the target untouched');
+assert_eq([0, 1, 2, 3, 4], array_map(fn($c) => $c['position'], $maTgtCards), 'move from an empty column leaves target positions untouched');
+
+// Source order survives gaps in the source positions.
+// Moving the middle card out leaves the source positions non-contiguous.
+$r = req('create_column', ['project_id' => $adminProjectId, 'name' => 'MAGAP'], 'POST', $adminCsrf);
+$maGapSrc = $r['body']['id'];
+$r = req('create_column', ['project_id' => $adminProjectId, 'name' => 'MAGAPT'], 'POST', $adminCsrf);
+$maGapTgt = $r['body']['id'];
+
+$r = req('create_card', ['column_id' => $maGapSrc, 'title' => 'G1'], 'POST', $adminCsrf);
+$maG1 = $r['body']['id'];
+$r = req('create_card', ['column_id' => $maGapSrc, 'title' => 'G2'], 'POST', $adminCsrf);
+$maG2 = $r['body']['id'];
+$r = req('create_card', ['column_id' => $maGapSrc, 'title' => 'G3'], 'POST', $adminCsrf);
+$maG3 = $r['body']['id'];
+
+$r = req('move_card', ['id' => $maG2, 'column_id' => $maGapTgt, 'position' => 0], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'move middle gap card out to create a gap');
+
+$r = req('list_cards', ['project_id' => $adminProjectId]);
+$maGapCards = array_values(array_filter($r['body'], fn($c) => $c['column_id'] == $maGapSrc));
+assert_eq([0, 2], array_map(fn($c) => $c['position'], $maGapCards), 'source now has non-contiguous positions');
+
+$r = req('move_all_cards', ['column_id' => $maGapSrc, 'target_column_id' => $maGapTgt], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'move all cards works with gapped source positions');
+assert_eq(2, $r['body']['moved'], 'gapped source moves both remaining cards');
+
+$r = req('list_cards', ['project_id' => $adminProjectId]);
+$maGapTgtCards = array_values(array_filter($r['body'], fn($c) => $c['column_id'] == $maGapTgt));
+assert_eq(3, count($maGapTgtCards), 'gapped target holds all three cards');
+assert_eq($maG1, $maGapTgtCards[0]['id'], 'gapped source keeps order: G1 first');
+assert_eq($maG3, $maGapTgtCards[1]['id'], 'gapped source keeps order: G3 second');
+assert_eq($maG2, $maGapTgtCards[2]['id'], 'card moved in earlier now sits below the bulk move');
+assert_eq([0, 1, 2], array_map(fn($c) => $c['position'], $maGapTgtCards), 'gapped target positions renumbered to 0-2');
+
+$r = req('delete_column', ['id' => $maSrc], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'delete column still works after adding the menu');
+$r = req('delete_column', ['id' => $maTgt], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'delete column with cards still works');
+
 // ─── COMMENTS ────────────────────────────────────────────
 section('Comments');
 
@@ -1741,7 +1850,7 @@ section('Updates');
 // auth_status returns version field
 $r = req('auth_status');
 assert_true(isset($r['body']['version']), 'auth_status returns version field');
-assert_eq('0.2.3', $r['body']['version'], 'version matches expected value');
+assert_eq('0.3.0', $r['body']['version'], 'version matches expected value');
 
 // auth_status returns update_available field
 assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');
@@ -2059,6 +2168,95 @@ assert_true(str_contains($src, "projects-list") && str_contains($src, 'Sortable'
 // Frontend: project search
 assert_true(str_contains($src, 'searchProjects('), 'searchProjects function defined');
 assert_true(str_contains($src, 'project-search') || str_contains($src, 'projects-search'), 'project search input exists');
+
+// ─── COLUMN MENU ─────────────────────────────────────────
+section('Column Menu');
+
+$src = file_get_contents(__DIR__ . '/index.php');
+
+// Backend
+assert_true(str_contains($src, "'move_all_cards' => apiMoveAllCards()"), 'move_all_cards route registered');
+assert_true(str_contains($src, 'function apiMoveAllCards'), 'apiMoveAllCards function defined');
+
+// Auth matches apiDeleteColumn
+assert_true(preg_match('/function apiMoveAllCards.*?requireOwner\(/s', $src) === 1, 'apiMoveAllCards uses requireOwner');
+
+// Target column lookup is scoped to the source project
+assert_true(str_contains($src, 'SELECT id FROM columns_ WHERE id = ? AND project_id = ?'), 'target column lookup is scoped by project_id');
+
+// Frontend: meatball menu replaces the delete button
+assert_true(str_contains($src, 'column-menu'), 'column-menu class defined');
+assert_true(str_contains($src, 'column-menu-toggle'), 'column-menu-toggle class defined');
+assert_true(str_contains($src, 'toggleColumnMenu('), 'toggleColumnMenu JS function defined');
+assert_true(str_contains($src, 'showMoveAllCards('), 'showMoveAllCards JS function defined');
+assert_true(str_contains($src, 'Move all cards to'), 'Move all cards to menu item rendered');
+assert_true(str_contains($src, 'Delete column'), 'Delete column menu item rendered');
+
+// The meatball toggle must not reuse .dropdown-toggle, whose 768px rule hides its last svg
+assert_true(preg_match('/\.column-menu-toggle\s*\{[^}]*\}/s', $src) === 1, 'column-menu-toggle has its own CSS rule');
+assert_true(str_contains($src, 'class="column-menu-toggle"'), 'column menu toggle button uses only its own class');
+
+// Regression: the document click-outside handler only exempts .dropdown. A column menu
+// wrapped only in .column-menu was closed by the same click that opened it.
+assert_true(str_contains($src, 'class="column-menu dropdown"'), 'column menu wrapper also carries the dropdown class');
+assert_true(str_contains($src, "closest('.dropdown')"), 'click-outside handler still keys off .dropdown');
+
+// The target select should default to the next column along the board, not the first one.
+assert_true(str_contains($src, 'this.columns[this.columns.indexOf(col) + 1] || this.columns[0]'), 'default target is the next column, wrapping to the first');
+assert_true(str_contains($src, "? ' selected' : ''"), 'the default target option is marked selected');
+
+// SortableJS must not start a column drag from the menu
+assert_true(str_contains($src, "filter: '.column-menu'"), 'column drag is filtered from the menu');
+
+// ─── COLUMN COUNTS ───────────────────────────────────────
+section('Column Counts');
+
+$src = file_get_contents(__DIR__ . '/index.php');
+
+// Dragging a card between columns moves the card in the DOM, but the per-column count
+// badges were never refreshed, so they kept their old values after a manual move.
+// initSortable has two card-move handlers (the guest path and the signed-in path) and
+// both must refresh. Each handler is read as a bounded slice on purpose: a lazy regex
+// over the whole file would match the updateColumnCounts definition further down and
+// pass for the wrong reason. The bound of 1000 is measured: the last call in either
+// handler sits at +752, and the next handler starts 2193 bytes later, so the slice
+// cannot bleed into a neighbouring handler or reach the definition.
+assert_true(str_contains($src, 'updateColumnCounts()'), 'updateColumnCounts helper exists');
+
+$cardDragHandlers = 0;
+$cardDragHandlersRefreshing = 0;
+$cardDragHandlersCaching = 0;
+$scanPos = 0;
+while (($p = strpos($src, 'onEnd: (evt) => {', $scanPos)) !== false) {
+    $cardDragHandlers++;
+    $handler = substr($src, $p, 1000);
+    if (str_contains($handler, 'updateColumnCounts()')) $cardDragHandlersRefreshing++;
+    if (str_contains($handler, 'cached.column_id = newColumnId')) $cardDragHandlersCaching++;
+    $scanPos = $p + 1;
+}
+assert_eq(2, $cardDragHandlers, 'initSortable has two card-move handlers (guest and signed-in)');
+assert_eq($cardDragHandlers, $cardDragHandlersRefreshing, 'every card-move handler refreshes column counts');
+
+// A drag moves the card in the DOM and on the server, but not in the this.cards cache.
+// Leaving the cache stale made the move-all modal report "Move 0 cards" and made any
+// later renderBoard() redraw the card back into the column it had left.
+assert_eq($cardDragHandlers, $cardDragHandlersCaching, 'every card-move handler updates the client card cache');
+
+$cardDragPos = strpos($src, "this.api('move_card'");
+$cardDragTail = $cardDragPos === false ? '' : substr($src, $cardDragPos, 800);
+assert_true(
+    strpos($cardDragTail, 'updateColumnCounts()') !== false
+    && strpos($cardDragTail, 'updateColumnCounts()') > strpos($cardDragTail, "'POST'"),
+    'column counts refresh after move_card is sent'
+);
+
+// The counts must count the same thing renderBoard does: cards that are still visible,
+// so the numbers stay correct while a tag filter or search is active.
+assert_true(str_contains($src, ".card[data-id]:visible"), 'column counts count visible cards only');
+
+// Other card mutations re-render the whole board, so they cannot drift.
+assert_true(preg_match('/createCard\([^)]*\)\s*\{.*?refreshBoard\(\)/s', $src) === 1, 'createCard re-renders the board');
+assert_true(preg_match('/deleteCard\([^)]*\)\s*\{.*?refreshBoard\(\)/s', $src) === 1, 'deleteCard re-renders the board');
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";

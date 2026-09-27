@@ -14,6 +14,7 @@ The entire application (backend logic, frontend markup, CSS, and JavaScript) liv
 
 - Drag-and-drop cards and columns
 - Multiple projects with customizable columns
+- Move all cards from one column to another in a single action
 - Team management with roles (admin and member)
 - Guest access via shareable token links
 - WYSIWYG editor with markdown shortcuts for card descriptions and comments
@@ -103,6 +104,14 @@ Click "Add card" at the bottom of any column. Choose **Top** or **Bottom** in th
 - Comments
 
 Drag cards between columns or reorder them within a column. Drag columns to reorder them.
+
+Each column header has a menu (the `⋮` button) with two options:
+
+- **Move all cards to...** — move every card in that column to another column at once. The
+  cards keep their order and land at the top of the target column.
+- **Delete column** — delete the column and all its cards.
+
+The first column has no menu, because it cannot be deleted.
 
 ### Team
 

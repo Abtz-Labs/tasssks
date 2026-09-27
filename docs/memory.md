@@ -107,3 +107,31 @@ Session checkpoints for continuity across sessions.
 - `apiReorderProjects()` endpoint: accepts `order` array of project IDs, updates `position` column. Requires auth.
 - `initProjectSortable()`: SortableJS on `#projects-list` with `data-id` on `.project-card`. `onChoose`/`onUnchoose` toggle `sortable-drag-active` body class. `onEnd` sends `reorder_projects` API call and updates index badges.
 - Project search: input in `.projects-header` (between h1 and "+ New Project" button). `searchProjects(query)` filters `.project-card` by name (case-insensitive show/hide). Test count: 528 (all passing).
+
+## 2026-09-26 (move all cards / column menu)
+
+- `apiMoveAllCards()` + `move_all_cards` route: bulk-moves every card from `column_id` to `target_column_id`, landing at the top. Returns `{ok, moved}`. `requireOwner`, same as `apiDeleteColumn`.
+- Positions: target cards shift down by the source count (`position = position + n`), then source cards get `0..n-1`. Source positions can have gaps because `apiMoveCard` renumbers only the target column, so the source is renumbered explicitly (`ORDER BY position, id`) rather than shifted as a block. No transaction — matches the existing untransacted style of `apiMoveCard`.
+- Column header: the `×` is replaced by a meatball menu (`.column-menu.dropdown`) with `Move all cards to...` and `Delete column`. First column has no menu (it cannot be deleted). Menu visible to any non-guest; endpoint is owner-only, so members see it and get 403 — pre-existing inconsistency, deliberately preserved.
+- CSS trap: the `max-width: 768px` rule `.dropdown-toggle svg:last-child { display: none }` hides the account menu chevron. A lone meatball icon is also `:last-child`, so the toggle uses its own `.column-menu-toggle` class. Verified live at a 414px viewport: account chevron hidden, meatball visible.
+- Trap: the document click-outside handler only exempts `.dropdown`, so a wrapper of only `.column-menu` was closed by the same click that opened it. The wrapper carries `dropdown` as well. Regression test added.
+- Column drag uses `handle: '.column-header'`, so SortableJS got `filter: '.column-menu'` to stop the meatball starting a drag.
+- `toggleColumnMenu(btn)` closes all menus before opening one, so two column menus cannot be open at once. Test count: 574 (all passing).
+
+## 2026-09-26 (column counts on drag + move-all default)
+
+- Fixed a **pre-existing** bug: dragging a card between columns never refreshed the `.column-count` badges. The card drag `onEnd` moved the DOM and sent `move_card` but never called `updateColumnCounts()`. Was broken at HEAD, unrelated to the column menu work.
+- `initSortable()` has **two** card-move handlers: a guest path (first column only, gated on `guest_can_sort_cards`) and the signed-in path (all columns). Both needed the fix. `createCard`/`deleteCard` were already fine because they call `refreshBoard()`.
+- Lesson: a lazy `/s` regex over a 9600-line single-file app matches code far past the intended block. `.*?` found the `updateColumnCounts` *definition* and the test passed for the wrong reason. Use bounded `substr()` slices, and assert handler-count == refreshing-handler-count so a future third handler cannot skip the fix.
+- `showMoveAllCards` now pre-selects the **next** column along the board instead of the first, wrapping to `this.columns[0]` when the source is the last column. The first column has no menu, so the source is never index 0 and the wrap target is always valid. Test count: 583 (all passing).
+
+## 2026-09-26 (stale card cache after drag)
+
+- Fixed a **pre-existing** bug behind "Move 0 cards": `showMoveAllCards` counts from the `this.cards` cache, but a manual drag only updated the DOM and the server. The cache kept the old `column_id`, so the modal reported 0 for a column holding 2 cards.
+- The same staleness caused a worse symptom: applying/clearing the tag filter calls `renderBoard()`, which redrew the dragged cards **back into the column they had left**, contradicting the server. Root fix: both drag handlers now do `const cached = this.cards.find(c => c.id == cardId); if (cached) cached.column_id = newColumnId;`. Fixes the count bug and the revert bug together.
+- The modal count must keep reading the **cache, not the DOM**. With a tag filter active the DOM omits non-matching cards, so a DOM count would understate how many cards the server will really move. Verified: filter hides both cards, modal still correctly says "Move 2 cards".
+- Test slice bounds are measured, not guessed: last call in a drag handler is at +752 bytes from its `onEnd`, next handler starts 2193 later. A 700-byte slice broke the moment the guest handler gained a line; 1000 has margin on both sides. Test count: 584 (all passing).
+
+## 2026-09-26 (version bump)
+
+- Bumped 0.2.3 → 0.3.0. Only three places hold a literal version: `index.php` `APP_VERSION`, `package.json`, and the `tests.php` version assertion. Footer, Help modal, App Settings, and the `version_compare` update check all read `APP_VERSION`, so one edit covers them all. `Justfile` and `bare.config.json` carry no version. Test count: 584 (all passing).

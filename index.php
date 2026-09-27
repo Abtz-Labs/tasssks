@@ -29,7 +29,7 @@ if (php_sapi_name() === 'cli-server') {
 // ============================================================================
 
 define('APP_NAME', 'Tasssks');
-define('APP_VERSION', '0.2.3');
+define('APP_VERSION', '0.3.0');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', getenv('TASSSKS_UPLOAD_DIR') ?: __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', (int) (getenv('TASSSKS_MAX_UPLOAD_SIZE') ?: (2 * 1024 * 1024)));
@@ -732,6 +732,7 @@ if ($action) {
     'create_column' => apiCreateColumn(),
     'update_column' => apiUpdateColumn(),
     'delete_column' => apiDeleteColumn(),
+    'move_all_cards' => apiMoveAllCards(),
     'reorder_columns' => apiReorderColumns(),
 
     // Cards
@@ -1510,6 +1511,46 @@ function apiDeleteColumn(): void
 
   $db->prepare("DELETE FROM columns_ WHERE id = ?")->execute([$id]);
   jsonResponse(['ok' => true]);
+}
+
+function apiMoveAllCards(): void
+{
+  $input = getInput();
+  $columnId = (int) ($input['column_id'] ?? 0);
+  $targetId = (int) ($input['target_column_id'] ?? 0);
+
+  if (!$columnId || !$targetId) jsonResponse(['error' => 'Missing fields'], 400);
+  if ($columnId === $targetId) jsonResponse(['error' => 'Source and target must be different'], 400);
+
+  $db = getDb();
+  $col = $db->prepare("SELECT project_id FROM columns_ WHERE id = ?");
+  $col->execute([$columnId]);
+  $source = $col->fetch();
+  if (!$source) jsonResponse(['error' => 'Not found'], 404);
+
+  requireOwner($source['project_id']);
+
+  $target = $db->prepare("SELECT id FROM columns_ WHERE id = ? AND project_id = ?");
+  $target->execute([$targetId, $source['project_id']]);
+  if (!$target->fetch()) jsonResponse(['error' => 'Not found'], 404);
+
+  // The source positions can have gaps, because moving a card out does not renumber
+  // the column it left, so the cards are renumbered here instead of shifted as a block.
+  $cards = $db->prepare("SELECT id FROM cards WHERE column_id = ? ORDER BY position, id");
+  $cards->execute([$columnId]);
+  $rows = $cards->fetchAll();
+  $moved = count($rows);
+  if (!$moved) jsonResponse(['ok' => true, 'moved' => 0]);
+
+  $db->prepare("UPDATE cards SET position = position + ? WHERE column_id = ?")->execute([$moved, $targetId]);
+
+  $upd = $db->prepare("UPDATE cards SET column_id = ?, position = ?, updated_at = datetime('now') WHERE id = ?");
+  $pos = 0;
+  foreach ($rows as $row) {
+    $upd->execute([$targetId, $pos++, $row['id']]);
+  }
+
+  jsonResponse(['ok' => true, 'moved' => $moved]);
 }
 
 function apiReorderColumns(): void
@@ -5501,6 +5542,36 @@ $isGuestRequest = isset($_GET['guest']);
       background: var(--danger-soft);
     }
 
+    /* Column options menu (meatball).
+       Deliberately does not reuse .dropdown-toggle: the max-width: 768px rule hides
+       .dropdown-toggle svg:last-child to drop the account menu chevron, and a lone
+       meatball icon would be hidden with it.
+       The wrapper does reuse .dropdown, so the document click-outside handler leaves
+       the open menu alone instead of closing it on the same click that opened it. */
+    .column-menu-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: none;
+      color: var(--text-light);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .column-menu-toggle:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+    }
+
+    .column-menu .dropdown-menu {
+      min-width: 190px;
+    }
+
     /* Footer */
     .app-footer {
       margin-top: auto;
@@ -7001,7 +7072,23 @@ $isGuestRequest = isset($_GET['guest']);
                             <span class="column-name"${!this.isGuest && !isFixed ? ` ondblclick="App.editColumnName(${col.id}, this)"` : ''}>${this.esc(col.name)}</span>
                             <span class="column-count">${colCards.length}</span>
                         </h3>
-                        ${!this.isGuest && !isFixed ? `<button class="modal-close text-18px" onclick="App.deleteColumn(${col.id})" title="Delete column">&times;</button>` : ''}
+                        ${!this.isGuest && !isFixed ? `
+                            <div class="column-menu dropdown">
+                                <button class="column-menu-toggle" onclick="App.toggleColumnMenu(this)" title="Column options">
+                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="currentColor" stroke-width="0"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+                                </button>
+                                <div class="dropdown-menu">
+                                    <button class="dropdown-item" onclick="App.showMoveAllCards(${col.id})">
+                                        <svg viewBox="0 0 24 24" stroke-width="2"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>
+                                        Move all cards to...
+                                    </button>
+                                    <div class="dropdown-divider"></div>
+                                    <button class="dropdown-item dropdown-item--danger" onclick="App.deleteColumn(${col.id})">
+                                        <svg viewBox="0 0 24 24" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        Delete column
+                                    </button>
+                                </div>
+                            </div>` : ''}
                     </div>
                     <div class="column-cards${!this.isGuest || (isFixed && this.currentProject.guest_can_sort_cards) ? ' cards-sortable' : ''}" data-column-id="${col.id}">
                         ${colCards.length ? colCards.map(card => this.renderCard(card)).join('') : '<p class="column-empty">Empty stack</p>'}
@@ -7078,6 +7165,9 @@ $isGuestRequest = isset($_GET['guest']);
                     if (!$(evt.from).find('.card').length) {
                       $(evt.from).append('<p class="column-empty">Empty stack</p>');
                     }
+                    const cached = this.cards.find(c => c.id == cardId);
+                    if (cached) cached.column_id = newColumnId;
+                    this.updateColumnCounts();
                   }
                 });
               }
@@ -7089,6 +7179,7 @@ $isGuestRequest = isset($_GET['guest']);
             new Sortable(boardEl, {
               animation: 150,
               handle: '.column-header',
+              filter: '.column-menu',
               draggable: '.column:not(.column-fixed)',
               ghostClass: 'sortable-ghost',
               onEnd: () => {
@@ -7127,6 +7218,9 @@ $isGuestRequest = isset($_GET['guest']);
                 if (!$(evt.from).find('.card').length) {
                   $(evt.from).append('<p class="column-empty">Empty stack</p>');
                 }
+                const cached = this.cards.find(c => c.id == cardId);
+                if (cached) cached.column_id = newColumnId;
+                this.updateColumnCounts();
               }
             });
           });
@@ -7186,6 +7280,43 @@ $isGuestRequest = isset($_GET['guest']);
             this.api('delete_column', {
               id
             }, 'POST').done(() => this.refreshBoard());
+          });
+        },
+
+        toggleColumnMenu(btn) {
+          const menu = $(btn).next();
+          const wasOpen = menu.hasClass('open');
+          $('.dropdown-menu').removeClass('open');
+          if (!wasOpen) menu.addClass('open');
+        },
+
+        showMoveAllCards(id) {
+          $('.dropdown-menu').removeClass('open');
+          const col = this.columns.find(c => c.id == id);
+          if (!col) return;
+          // Default to the next column along the board, wrapping to the first on the last column.
+          const next = this.columns[this.columns.indexOf(col) + 1] || this.columns[0];
+          const options = this.columns.filter(c => c.id != id).map(c => `<option value="${c.id}"${c.id == next.id ? ' selected' : ''}>${this.esc(c.name)}</option>`).join('');
+          if (!options) return this.toast('This is the only column.');
+          const count = this.cards.filter(c => c.column_id == id).length;
+          const label = count === 1 ? 'card' : 'cards';
+          this.openModal('Move all cards', `
+            <div class="form-group"><label>From</label><input type="text" value="${this.esc(col.name)}" disabled></div>
+            <div class="form-group"><label>To</label><select id="move-all-target" class="select-full">${options}</select></div>
+            <p class="text-light">${count} ${label} will move to the top of the target column.</p>
+        `, `<button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button> <button class="btn btn-primary" onclick="App.moveAllCards(${id})">Move ${count} ${label}</button>`);
+        },
+
+        moveAllCards(id) {
+          const target = $('#move-all-target').val();
+          if (!target) return;
+          this.api('move_all_cards', {
+            column_id: id,
+            target_column_id: target
+          }, 'POST').done(r => {
+            this.closeModal();
+            this.refreshBoard();
+            this.toast(`Moved ${r.moved} ${r.moved === 1 ? 'card' : 'cards'}.`, 'success');
           });
         },
 
@@ -8970,6 +9101,15 @@ $isGuestRequest = isset($_GET['guest']);
     showHelp() {
         const baseUrl = location.origin + location.pathname;
         this.openModal('Help', `
+            <div class="card-detail-section">
+                <h4>Columns</h4>
+                <p class="text-base text">Click the <strong>⋮</strong> button in a column header to open its menu.</p>
+                <ul class="text-base text pl-5 mb-0">
+                    <li><strong>Move all cards to...</strong> — move every card in that column to another column. The cards keep their order and land at the top of the target column.</li>
+                    <li><strong>Delete column</strong> — delete the column and all its cards.</li>
+                </ul>
+                <p class="text-sm text-light mt-2">The first column has no menu, because it cannot be deleted.</p>
+            </div>
             <div class="card-detail-section">
                 <h4>Scheduled Tasks (Cron)</h4>
                 <p class="text-base text mb-2">Set up two cron jobs to handle email notifications:</p>
