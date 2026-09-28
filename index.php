@@ -29,7 +29,7 @@ if (php_sapi_name() === 'cli-server') {
 // ============================================================================
 
 define('APP_NAME', 'Tasssks');
-define('APP_VERSION', '0.3.0');
+define('APP_VERSION', '0.3.1');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', getenv('TASSSKS_UPLOAD_DIR') ?: __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', (int) (getenv('TASSSKS_MAX_UPLOAD_SIZE') ?: (2 * 1024 * 1024)));
@@ -3170,8 +3170,8 @@ function apiApplyUpdate(): void
     jsonResponse(['error' => 'Cached content is invalid'], 400);
   }
   $newVersion = $m[1];
-  if ($newVersion === APP_VERSION) {
-    jsonResponse(['error' => 'Already up to date'], 400);
+  if (!version_compare($newVersion, APP_VERSION, '>')) {
+    jsonResponse(['error' => 'No newer version available'], 400);
   }
 
   // Backup current file
@@ -9298,7 +9298,7 @@ $isGuestRequest = isset($_GET['guest']);
     // MODAL
     openModal(title, body, footer) {
         $('#modal-title').html(title);
-        $('#modal-body .modal-body-scroll').html(body);
+        $('#modal-body .modal-body-scroll').html(body).scrollTop(0);
         $('#modal-footer').html(footer || '');
         $('#modal-overlay').addClass('active');
     },

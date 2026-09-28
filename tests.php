@@ -1850,7 +1850,7 @@ section('Updates');
 // auth_status returns version field
 $r = req('auth_status');
 assert_true(isset($r['body']['version']), 'auth_status returns version field');
-assert_eq('0.3.0', $r['body']['version'], 'version matches expected value');
+assert_eq('0.3.1', $r['body']['version'], 'version matches expected value');
 
 // auth_status returns update_available field
 assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');
@@ -1861,6 +1861,10 @@ $noAuthCookie = tempnam(sys_get_temp_dir(), 'kanban_noauth_');
 $r = req('check_update', [], 'GET', '', $noAuthCookie);
 assert_eq(403, $r['status'], 'check_update requires admin');
 @unlink($noAuthCookie);
+
+// apply_update fails without prior check (must run before check_update caches remote content)
+$r = req('apply_update', [], 'POST', $adminCsrf, $cookieFile);
+assert_eq(400, $r['status'], 'apply_update fails without prior check');
 
 // check_update succeeds for admin (will fail to fetch from GitHub in test, but endpoint works)
 $r = req('check_update', [], 'GET', '', $cookieFile);
@@ -1876,15 +1880,18 @@ assert_true($routerPos !== false, 'API ROUTER section exists');
 assert_true($constPos !== false, 'GITHUB_RAW_URL constant defined');
 assert_true($constPos < $routerPos, 'GITHUB_RAW_URL defined before API router');
 
+// apply_update must refuse non-newer versions. Without this, a stale cached release
+// (e.g. main still on an older tag) downgrades and overwrites index.php.
+assert_true(
+    str_contains($source, "version_compare(\$newVersion, APP_VERSION, '>')"),
+    'apply_update only applies strictly newer versions'
+);
+
 // apply_update requires admin (unauthenticated returns 403)
 $noAuthCookie2 = tempnam(sys_get_temp_dir(), 'kanban_noauth_');
 $r = req('apply_update', [], 'POST', '', $noAuthCookie2);
 assert_eq(403, $r['status'], 'apply_update requires admin');
 @unlink($noAuthCookie2);
-
-// apply_update fails without prior check
-$r = req('apply_update', [], 'POST', $adminCsrf, $cookieFile);
-assert_eq(400, $r['status'], 'apply_update fails without prior check');
 
 // index.php.bak blocked by security
 $ch = curl_init("$BASE/index.php.bak");
@@ -2273,6 +2280,15 @@ assert_true($lightboxEscPos !== false, 'Escape handler checks for an open lightb
 assert_true(
     $lightboxEscPos !== false && $modalEscPos !== false && $lightboxEscPos < $modalEscPos,
     'Escape closes the lightbox before the card modal'
+);
+
+// ─── MODAL SCROLL RESET ──────────────────────────────────
+echo "\n" . colorBold('=== Modal Scroll Reset ===') . "\n";
+// Opening a modal must start at the top, otherwise a long card opened after a
+// scrolled one inherits the previous scroll position.
+assert_true(
+    preg_match('/openModal\([^)]*\)\s*\{.*?\.scrollTop\(0\)/s', $src) === 1,
+    'openModal resets the modal body scroll to the top'
 );
 
 // ─── RESULTS ─────────────────────────────────────────────

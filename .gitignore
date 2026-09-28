@@ -11,3 +11,6 @@
 uploads/
 docs/plans/*.md
 bare.config.json
+
+# Updater backup
+index.php.bak
