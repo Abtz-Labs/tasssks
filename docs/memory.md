@@ -135,3 +135,9 @@ Session checkpoints for continuity across sessions.
 ## 2026-09-26 (version bump)
 
 - Bumped 0.2.3 → 0.3.0. Only three places hold a literal version: `index.php` `APP_VERSION`, `package.json`, and the `tests.php` version assertion. Footer, Help modal, App Settings, and the `version_compare` update check all read `APP_VERSION`, so one edit covers them all. `Justfile` and `bare.config.json` carry no version. Test count: 584 (all passing).
+
+## 2026-09-28 (stale card modal + scroll + lightbox ESC)
+
+- Fixed stale card modal after tag toggle / attachment upload / delete: mutations did `refreshBoard(); setTimeout(openCard, 200)`, but `refreshBoard` chains 3 AJAX round trips (`list_columns` → `list_cards` → `list_tags`+`unread_counts`). `openCard` read `this.cards` before it updated. Root fix: `refreshBoard(callback)` / `loadBoard(projectId, callback)`; every mutation now calls `refreshBoard(() => this.openCard(cardId))`. Applied to toggleTag, createTag, createCard, desc save, moveCardToColumn, deleteComment, uploadFiles, deleteAttachment, deleteTimeEntry, watch/unwatch (user + guest).
+- Fixed long modal content not scrollable: `.modal` uses only `max-height` (indefinite), so `.modal-body-scroll { height:100% }` resolved to `auto`. Changed `.modal-body` to a nested flex column and `.modal-body-scroll` to `flex:1; min-height:0`. Verified with terminal-browser: old CSS `scrollable:false`, new CSS `scrollable:true` (1548 > 577).
+- Fixed ESC closing the card instead of the attachment lightbox: the global keydown handler checked `#modal-overlay` without first checking `.lightbox`. Added `$('.lightbox').remove()` guard first. Test count: 588 (all passing).

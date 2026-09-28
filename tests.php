@@ -2258,6 +2258,23 @@ assert_true(str_contains($src, ".card[data-id]:visible"), 'column counts count v
 assert_true(preg_match('/createCard\([^)]*\)\s*\{.*?refreshBoard\(\)/s', $src) === 1, 'createCard re-renders the board');
 assert_true(preg_match('/deleteCard\([^)]*\)\s*\{.*?refreshBoard\(\)/s', $src) === 1, 'deleteCard re-renders the board');
 
+// ─── ATTACHMENT LIGHTBOX ─────────────────────────────────
+echo "\n" . colorBold('=== Attachment Lightbox ===') . "\n";
+assert_true(str_contains($src, 'previewImage(src)'), 'previewImage function defined');
+assert_true(str_contains($src, "overlay.className = 'lightbox'"), 'previewImage creates a .lightbox overlay');
+
+// ESC must close the lightbox, not the card modal behind it. The lightbox check
+// has to run before the #modal-overlay branch in the global keydown handler.
+$globalKeydownPos = strpos($src, 'const mod = e.metaKey || e.ctrlKey;');
+$escTail = $globalKeydownPos === false ? '' : substr($src, $globalKeydownPos, 700);
+$lightboxEscPos = strpos($escTail, "\$('.lightbox').length");
+$modalEscPos = strpos($escTail, "\$('#modal-overlay').hasClass('active')");
+assert_true($lightboxEscPos !== false, 'Escape handler checks for an open lightbox');
+assert_true(
+    $lightboxEscPos !== false && $modalEscPos !== false && $lightboxEscPos < $modalEscPos,
+    'Escape closes the lightbox before the card modal'
+);
+
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
 if ($failed === 0) {

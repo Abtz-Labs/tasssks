@@ -4180,12 +4180,15 @@ $isGuestRequest = isset($_GET['guest']);
       min-height: 0;
       overflow: visible;
       position: relative;
+      display: flex;
+      flex-direction: column;
     }
 
     .modal-body-scroll {
       padding: 24px;
       overflow-y: auto;
-      height: 100%;
+      flex: 1;
+      min-height: 0;
     }
 
     .modal-footer {
@@ -6910,7 +6913,7 @@ $isGuestRequest = isset($_GET['guest']);
         },
 
         // BOARD
-        loadBoard(projectId) {
+        loadBoard(projectId, callback) {
           this.api('list_cards', {
             project_id: projectId
           }).done(cards => {
@@ -6926,6 +6929,7 @@ $isGuestRequest = isset($_GET['guest']);
               this.tags = tagsRes[0] || tagsRes;
               this.unreadCounts = unreadRes[0] || unreadRes || {};
               this.renderBoard();
+              if (callback) callback();
             });
           });
         },
@@ -7354,8 +7358,7 @@ $isGuestRequest = isset($_GET['guest']);
           }, 'POST').done(res => {
             const cardId = res.id;
             this.closeModal();
-            this.refreshBoard();
-            setTimeout(() => this.openCard(cardId), 100);
+            this.refreshBoard(() => this.openCard(cardId));
           });
         },
 
@@ -7638,8 +7641,7 @@ $isGuestRequest = isset($_GET['guest']);
             id: cardId,
             description
           }, 'POST').done(() => {
-            this.refreshBoard();
-            setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
           });
         },
 
@@ -7651,8 +7653,7 @@ $isGuestRequest = isset($_GET['guest']);
             column_id: newColumnId,
             position: 0
           }, 'POST').done(() => {
-            this.refreshBoard();
-            setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
           });
         },
 
@@ -7672,8 +7673,7 @@ $isGuestRequest = isset($_GET['guest']);
             card_id: cardId,
             tag_id: tagId
           }, 'POST').done(() => {
-            this.refreshBoard();
-            setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
           });
         },
 
@@ -7741,8 +7741,7 @@ $isGuestRequest = isset($_GET['guest']);
             const cardId = this._pendingTagCardId;
             this._pendingTagCardId = null;
             this.closeModal();
-            this.refreshBoard();
-            if (cardId) setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => { if (cardId) this.openCard(cardId); });
           });
         },
 
@@ -7834,8 +7833,7 @@ $isGuestRequest = isset($_GET['guest']);
             this.api('delete_comment', {
               id: commentId
             }, 'POST').done(() => {
-              this.refreshBoard();
-              setTimeout(() => this.openCard(cardId), 200);
+              this.refreshBoard(() => this.openCard(cardId));
             });
           });
         },
@@ -7850,8 +7848,7 @@ $isGuestRequest = isset($_GET['guest']);
             return this.api('upload_attachment', fd, 'POST');
           });
           $.when(...uploads).always(() => {
-            this.refreshBoard();
-            setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
           });
         },
 
@@ -7878,8 +7875,7 @@ $isGuestRequest = isset($_GET['guest']);
           this.api('delete_attachment', {
             id
           }, 'POST').done(() => {
-            this.refreshBoard();
-            setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
           });
         },
 
@@ -8209,8 +8205,7 @@ $isGuestRequest = isset($_GET['guest']);
             this.api('delete_time_entry', {
               id
             }, 'POST').done(() => {
-              this.refreshBoard();
-              setTimeout(() => App.openCard(cardId), 200);
+              this.refreshBoard(() => App.openCard(cardId));
             });
           }), 50);
         },
@@ -9171,12 +9166,12 @@ $isGuestRequest = isset($_GET['guest']);
 
     watchCard(cardId) {
         this.api('watch', { project_id: this.currentProject.id, card_id: cardId }, 'POST').done(() => {
-            this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
         });
     },
     unwatchCard(cardId) {
         this.api('unwatch', { project_id: this.currentProject.id, card_id: cardId }, 'POST').done(() => {
-            this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
         });
     },
     loadProjectWatchState() {
@@ -9236,12 +9231,12 @@ $isGuestRequest = isset($_GET['guest']);
     },
     guestWatchCard(cardId) {
         this.api('guest_watch', { project_id: this.currentProject.id, card_id: cardId }, 'POST').done(() => {
-            this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
         });
     },
     guestUnwatchCard(cardId) {
         this.api('guest_unwatch', { project_id: this.currentProject.id, card_id: cardId }, 'POST').done(() => {
-            this.refreshBoard(); setTimeout(() => this.openCard(cardId), 200);
+            this.refreshBoard(() => this.openCard(cardId));
         });
     },
 
@@ -9281,9 +9276,9 @@ $isGuestRequest = isset($_GET['guest']);
         this.loadProjects();
     },
 
-    refreshBoard() {
+    refreshBoard(callback) {
         if (this.currentProject) {
-            this.api('list_columns', { project_id: this.currentProject.id }).done(cols => { this.columns = cols; this.loadBoard(this.currentProject.id); });
+            this.api('list_columns', { project_id: this.currentProject.id }).done(cols => { this.columns = cols; this.loadBoard(this.currentProject.id, callback); });
         }
     },
 
@@ -9549,6 +9544,10 @@ $isGuestRequest = isset($_GET['guest']);
                 const inInput = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
 
                 if (e.key === 'Escape') {
+                  if ($('.lightbox').length) {
+                    $('.lightbox').remove();
+                    return;
+                  }
                   if ($('#board-search').is(':focus')) {
                     App.clearSearch();
                     $('#board-search').blur();
