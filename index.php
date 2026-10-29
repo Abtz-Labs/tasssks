@@ -417,6 +417,17 @@ function generateToken(int $length = 32): string
   return bin2hex(random_bytes($length / 2));
 }
 
+function formatBytes(int $bytes): string
+{
+  if ($bytes >= 1024 * 1024) {
+    return rtrim(rtrim(number_format($bytes / (1024 * 1024), 1, '.', ''), '0'), '.') . 'MB';
+  }
+  if ($bytes >= 1024) {
+    return rtrim(rtrim(number_format($bytes / 1024, 1, '.', ''), '0'), '.') . 'KB';
+  }
+  return $bytes . 'B';
+}
+
 function slugify(string $text): string
 {
   $text = preg_replace('/[^a-z0-9]+/i', '-', strtolower(trim($text)));
@@ -2091,8 +2102,14 @@ function apiUnreadCounts(): void
 
 function apiUploadAttachment(): void
 {
+  $sizeError = 'File too large (max ' . formatBytes(MAX_UPLOAD_SIZE) . ')';
   $cardId = (int) ($_POST['card_id'] ?? 0);
-  if (!$cardId) jsonResponse(['error' => 'Missing card_id'], 400);
+  if (!$cardId) {
+    if (empty($_POST) && empty($_FILES) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+      jsonResponse(['error' => $sizeError], 400);
+    }
+    jsonResponse(['error' => 'Missing card_id'], 400);
+  }
 
   requireAuth();
 
@@ -2102,13 +2119,16 @@ function apiUploadAttachment(): void
   $row = $card->fetch();
   if (!$row) jsonResponse(['error' => 'Card not found'], 404);
 
-  if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+  if (!isset($_FILES['file'])) {
     jsonResponse(['error' => 'No file uploaded'], 400);
   }
 
   $file = $_FILES['file'];
-  if ($file['size'] > MAX_UPLOAD_SIZE) {
-    jsonResponse(['error' => 'File too large (max 10MB)'], 400);
+  if (in_array($file['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) || $file['size'] > MAX_UPLOAD_SIZE) {
+    jsonResponse(['error' => $sizeError], 400);
+  }
+  if ($file['error'] !== UPLOAD_ERR_OK) {
+    jsonResponse(['error' => 'Upload failed (error ' . $file['error'] . ')'], 400);
   }
 
   $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
@@ -3478,7 +3498,8 @@ $isGuestRequest = isset($_GET['guest']);
       background: var(--bg);
       color: var(--text);
       line-height: 1.5;
-      min-height: 100vh;
+      height: 100vh;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
     }
@@ -3851,6 +3872,9 @@ $isGuestRequest = isset($_GET['guest']);
       max-width: 800px;
       margin: 60px auto;
       padding: 0 24px;
+      flex: 0 1 auto;
+      min-height: 0;
+      overflow-y: auto;
     }
 
     .projects-header {
@@ -3921,8 +3945,15 @@ $isGuestRequest = isset($_GET['guest']);
       gap: 16px;
       padding: 24px;
       overflow-x: auto;
-      min-height: calc(100vh - 110px);
+      flex: 1 1 auto;
+      min-height: 0;
       align-items: flex-start;
+    }
+
+    #view-board {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     .column {
@@ -3932,7 +3963,7 @@ $isGuestRequest = isset($_GET['guest']);
       border-radius: var(--radius);
       display: flex;
       flex-direction: column;
-      max-height: calc(100vh - 150px);
+      max-height: 100%;
     }
 
     .column-header {
@@ -5854,7 +5885,6 @@ $isGuestRequest = isset($_GET['guest']);
       /* Board */
       .board {
         padding: 12px;
-        padding-bottom: 48px;
         gap: 12px;
       }
 
@@ -7841,14 +7871,19 @@ $isGuestRequest = isset($_GET['guest']);
         // ATTACHMENTS
         uploadFiles(cardId, files) {
           if (!files.length) return;
+          const failed = [];
           const uploads = Array.from(files).map(file => {
             const fd = new FormData();
             fd.append('file', file);
             fd.append('card_id', cardId);
-            return this.api('upload_attachment', fd, 'POST');
+            return this.api('upload_attachment', fd, 'POST').fail(xhr => {
+              failed.push(`${file.name}: ${xhr.responseJSON?.error || 'upload failed'}`);
+            });
           });
           $.when(...uploads).always(() => {
-            this.refreshBoard(() => this.openCard(cardId));
+            $('#file-upload').val('');
+            if (failed.length) this.toast(failed.join(' · '));
+            if (failed.length < files.length) this.refreshBoard(() => this.openCard(cardId));
           });
         },
 

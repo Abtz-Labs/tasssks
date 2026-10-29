@@ -1387,6 +1387,15 @@ $r = reqUpload('upload_attachment', $tmpFile, $attCardId, $adminCsrf);
 assert_eq(200, $r['status'], 'upload attachment with valid CSRF token accepted');
 assert_true(!empty($r['body']['id']), 'upload returns attachment id');
 
+$bigFile = tempnam(sys_get_temp_dir(), 'kanban_big_');
+file_put_contents($bigFile, str_repeat('x', 3 * 1024 * 1024));
+
+$r = reqUpload('upload_attachment', $bigFile, $attCardId, $adminCsrf);
+assert_eq(400, $r['status'], 'oversized upload rejected');
+assert_true(str_contains($r['body']['error'] ?? '', 'too large'), 'oversized upload reports size error');
+assert_true(str_contains($r['body']['error'] ?? '', 'max 2MB'), 'oversized upload error states the real limit');
+
+@unlink($bigFile);
 @unlink($tmpFile);
 
 // ─── CLEANUP ─────────────────────────────────────────────
@@ -2051,10 +2060,28 @@ assert_true(str_contains($src, 'safeContent') && str_contains($src, "c.content |
 // loadProjectWatchState null-user guard prevents crash
 assert_true(str_contains($src, 'this.user && watchers.some'), 'loadProjectWatchState null-checks this.user');
 
+// Attachment uploads must notify the user when a file is rejected
+assert_true(!str_contains($src, 'max 10MB'), 'upload size error does not hardcode 10MB');
+assert_true(str_contains($src, 'function formatBytes('), 'formatBytes helper defined');
+assert_true(str_contains($src, 'UPLOAD_ERR_INI_SIZE'), 'upload handler handles PHP upload_max_filesize errors');
+$uploadFn = substr($src, strpos($src, 'uploadFiles(cardId, files) {'));
+$uploadFn = substr($uploadFn, 0, strpos($uploadFn, 'initDropZone()'));
+assert_true(str_contains($uploadFn, '.fail('), 'uploadFiles has a failure handler');
+assert_true(str_contains($uploadFn, 'this.toast('), 'uploadFiles toasts failed uploads');
+
 // Footer must not overlap content on long pages (flex layout, not fixed)
-assert_true(str_contains($src, "flex-direction: column") && str_contains($src, "min-height: 100vh"), 'Body uses flex column with min-height 100vh');
+assert_true(str_contains($src, "flex-direction: column") && str_contains($src, "height: 100dvh"), 'Body is a full-height flex app shell');
 assert_true(!str_contains($src, "position: fixed") || !preg_match('/\.app-footer\s*\{[^}]*position\s*:\s*fixed/', $src), 'Footer is not position:fixed');
 assert_true(str_contains($src, "margin-top: auto"), 'Footer uses margin-top:auto to stay at bottom');
+
+// Board must fit the viewport (desktop and mobile) instead of scrolling past the fold
+assert_true(!str_contains($src, 'min-height: calc(100vh - 110px)'), 'Board does not use a hardcoded viewport offset for min-height');
+assert_true(!str_contains($src, 'max-height: calc(100vh - 150px)'), 'Columns do not use a hardcoded viewport offset for max-height');
+assert_true((bool) preg_match('/#view-board\s*\{[^}]*display:\s*flex/', $src), '#view-board is a flex child of the app shell');
+assert_true((bool) preg_match('/\.board\s*\{[^}]*flex:\s*1/', $src), '.board fills the remaining viewport height');
+assert_true((bool) preg_match('/\.column\s*\{[^}]*max-height:\s*100%/s', $src), 'Columns are capped at the board height');
+assert_true((bool) preg_match('/\.column-cards\s*\{[^}]*overflow-y:\s*auto/', $src), 'Card lists scroll inside their column');
+assert_true((bool) preg_match('/\.projects-view\s*\{[^}]*overflow-y:\s*auto/', $src), 'Non-board views scroll inside the app shell');
 
 // Text replacements: typographic shortcuts
 assert_true(str_contains($src, 'TEXT_REPLACEMENTS'), 'TEXT_REPLACEMENTS map defined');
