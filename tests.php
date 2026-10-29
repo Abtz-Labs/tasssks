@@ -2162,6 +2162,14 @@ $addTimeFn = substr($addTimeFn, 0, strpos($addTimeFn, 'endTimeEntry('));
 assert_true(str_contains($addTimeFn, "toast('Time entry saved.'"), 'addTimeEntry confirms the save');
 assert_true(!str_contains($addTimeFn, 'time-section'), 'time form stays open after saving an entry');
 
+// iOS does not zoom in on focus when form controls are at least 16px
+assert_true((bool) preg_match('/input\[type="text"\],\s*input\[type="email"\],\s*input\[type="password"\],\s*input\[type="date"\],\s*input\[type="time"\],\s*textarea,\s*select,\s*\.ql-editor\s*\{[^}]*font-size:\s*16px/s', $mobileCss), 'mobile form controls use 16px font to stop iOS focus zoom');
+
+// Modal must fit the mobile visual viewport and scroll inside it
+assert_true((bool) preg_match('/\.modal\s*\{[^}]*max-height:\s*80dvh/s', $src), 'modal height uses dvh');
+assert_true((bool) preg_match('/\.modal\s*\{[^}]*max-height:\s*calc\(100dvh - 48px\)/s', $mobileCss), 'mobile modal height uses dvh');
+assert_true((bool) preg_match('/\.modal-body-scroll\s*\{[^}]*overscroll-behavior:\s*contain/s', $src), 'modal scroll does not chain to the page');
+
 // Text replacements: typographic shortcuts
 assert_true(str_contains($src, 'TEXT_REPLACEMENTS'), 'TEXT_REPLACEMENTS map defined');
 assert_true(str_contains($src, "':check:'") && str_contains($src, "'\\u2705'"), ':check: maps to checkmark');

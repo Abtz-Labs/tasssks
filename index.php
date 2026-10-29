@@ -4168,6 +4168,7 @@ $isGuestRequest = isset($_GET['guest']);
       width: 100%;
       max-width: 600px;
       max-height: 80vh;
+      max-height: 80dvh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -4226,6 +4227,7 @@ $isGuestRequest = isset($_GET['guest']);
       overflow-y: auto;
       flex: 1;
       min-height: 0;
+      overscroll-behavior: contain;
     }
 
     .modal-footer {
@@ -5915,6 +5917,18 @@ $isGuestRequest = isset($_GET['guest']);
         margin: 24px auto;
       }
 
+      /* Prevent iOS from zooming in when a field gets focus (needs >= 16px) */
+      input[type="text"],
+      input[type="email"],
+      input[type="password"],
+      input[type="date"],
+      input[type="time"],
+      textarea,
+      select,
+      .ql-editor {
+        font-size: 16px;
+      }
+
       /* Time tracking: keep the form inside the modal */
       .time-form-row {
         flex-wrap: wrap;
@@ -5966,6 +5980,7 @@ $isGuestRequest = isset($_GET['guest']);
         margin: 0 8px;
         width: calc(100% - 16px);
         max-height: calc(100vh - 48px);
+        max-height: calc(100dvh - 48px);
       }
 
       .modal-header {
