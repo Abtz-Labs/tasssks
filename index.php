@@ -5896,6 +5896,42 @@ $isGuestRequest = isset($_GET['guest']);
         margin: 24px auto;
       }
 
+      /* Time tracking: keep the form inside the modal */
+      .time-form-row {
+        flex-wrap: wrap;
+      }
+
+      .time-input-group {
+        flex: 1 1 100px;
+        min-width: 0;
+      }
+
+      .time-input-group input[type="time"] {
+        flex: 1;
+        width: auto;
+        min-width: 0;
+      }
+
+      .time-form-row input[type="date"] {
+        flex: 1 1 100%;
+        width: auto;
+      }
+
+      .time-form-row .time-input {
+        flex: 0 1 90px;
+        width: auto;
+        min-width: 0;
+      }
+
+      .time-entries-table th,
+      .time-entries-table td {
+        padding: 4px;
+      }
+
+      [id^="time-entries-"] {
+        overflow-x: auto;
+      }
+
       /* Footer: stack vertically */
       .app-footer {
         flex-direction: column;

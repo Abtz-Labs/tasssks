@@ -2083,6 +2083,14 @@ assert_true((bool) preg_match('/\.column\s*\{[^}]*max-height:\s*100%/s', $src), 
 assert_true((bool) preg_match('/\.column-cards\s*\{[^}]*overflow-y:\s*auto/', $src), 'Card lists scroll inside their column');
 assert_true((bool) preg_match('/\.projects-view\s*\{[^}]*overflow-y:\s*auto/', $src), 'Non-board views scroll inside the app shell');
 
+// Time tracking form must fit narrow screens (no horizontal overflow)
+$mobileCss = preg_match('/@media \(max-width: 768px\) \{(.*)/s', $src, $m) ? $m[1] : '';
+assert_true((bool) preg_match('/\.time-form-row\s*\{[^}]*flex-wrap:\s*wrap/s', $mobileCss), 'time form rows wrap on mobile');
+assert_true((bool) preg_match('/\.time-input-group\s*\{[^}]*min-width:\s*0/s', $mobileCss), 'time input groups can shrink on mobile');
+assert_true((bool) preg_match('/\.time-input-group input\[type="time"\]\s*\{[^}]*width:\s*auto/s', $mobileCss), 'time inputs shrink instead of keeping a fixed width');
+assert_true((bool) preg_match('/\.time-entries-table th,\s*\.time-entries-table td\s*\{[^}]*padding:\s*4px/s', $mobileCss), 'time entries table uses tighter padding on mobile');
+assert_true((bool) preg_match('/\[id\^="time-entries-"\]\s*\{[^}]*overflow-x:\s*auto/s', $mobileCss), 'time entries table scrolls horizontally instead of clipping on mobile');
+
 // Text replacements: typographic shortcuts
 assert_true(str_contains($src, 'TEXT_REPLACEMENTS'), 'TEXT_REPLACEMENTS map defined');
 assert_true(str_contains($src, "':check:'") && str_contains($src, "'\\u2705'"), ':check: maps to checkmark');
