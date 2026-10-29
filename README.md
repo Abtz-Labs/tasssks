@@ -143,6 +143,8 @@ Track time spent on cards. Click the stopwatch icon on any card to open the time
 
 If the end time is earlier than the start time, it counts on the next day: `23:00 → 01:00` is 2h, and the entry is marked with `+1d`. The form stays open after saving, so you can log several entries in a row. Click the pencil icon on an entry to change its date, times, or note.
 
+Moving a card to another column (including "Move all cards to...") stops any running timer on that card, so a forgotten timer never keeps counting after the work is done.
+
 Time entries include the date and an optional note. View aggregated reports per project from the board header (group by card, user, or day; filter by period; export to CSV).
 
 Guests can view time reports if enabled in project settings (Guests tab → "View time report").
@@ -327,4 +329,4 @@ Open an issue with steps to reproduce. Include your PHP version, browser, and an
 
 In short: use it, modify it, self-host it, distribute it. Just don't offer it as a competing hosted service where the software itself is the primary value.
 
-Designed and built by [Rogerio Taques](https://x.com/rogeriotaques), the guy behind [Abtz Labs](https://abtz.co).
+Designed and built by [Rogerio Taques](https://x.com/rogeriotaques), the guy behind [Use Bare](https://usebare.org?ref=Tasssks&utm_source=Tasssks&utm_media=Instance&utm_content=0.3.1).

@@ -1900,12 +1900,77 @@ assert_eq(150, (int)$edited['minutes'], 'date-only edit keeps the duration');
 $r = req('update_time_entry', ['id' => $overnightId, 'worked_at' => 'yesterday'], 'POST', $adminCsrf);
 assert_eq(400, $r['status'], 'invalid worked_at rejected');
 
+// --- Moving a card to another stack ends its running timer ---
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '09:00', 'worked_at' => date('Y-m-d')], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'start a timer before moving the card');
+$runningEntryId = $r['body']['id'];
+
+$r = req('list_columns', ['project_id' => $adminProjectId]);
+$targetColId = $r['body'][1]['id'];
+
+$r = req('move_card', ['id' => $timeCardId, 'column_id' => $targetColId, 'position' => 0, 'now' => '10:30'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'move card to another stack');
+assert_eq(1, (int)($r['body']['ended_timers'] ?? 0), 'move_card reports the ended timer');
+
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$running = array_values(array_filter($r['body'], fn($e) => $e['id'] == $runningEntryId))[0] ?? null;
+assert_true($running !== null && $running['end_time'] === '10:30', 'running timer ends at the time sent by the client');
+assert_eq(90, (int)$running['minutes'], 'ended timer duration uses the client clock (09:00 → 10:30 = 90m)');
+
+// Reordering inside the same stack must not end a running timer
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '09:00', 'worked_at' => date('Y-m-d')], 'POST', $adminCsrf);
+$stillRunningId = $r['body']['id'];
+$r = req('move_card', ['id' => $timeCardId, 'column_id' => $targetColId, 'position' => 0], 'POST', $adminCsrf);
+assert_eq(0, (int)($r['body']['ended_timers'] ?? 0), 'reordering reports no ended timer');
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$stillRunning = array_values(array_filter($r['body'], fn($e) => $e['id'] == $stillRunningId))[0] ?? null;
+assert_eq(null, $stillRunning['end_time'], 'reordering inside the same stack keeps the timer running');
+
+// Auto-close must use the user's timezone when the client clock is missing
+// (regression: the server's UTC time was recorded as the end time).
+$jst = -540;
+$startJst = gmdate('H:i', time() - $jst * 60 - 3600);
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => $startJst, 'worked_at' => date('Y-m-d'), 'tz_offset' => $jst], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'start a timer with a stored timezone offset');
+$offsetEntryId = $r['body']['id'];
+$r = req('move_card', ['id' => $timeCardId, 'column_id' => $colId, 'position' => 0], 'POST', $adminCsrf);
+assert_true((int)($r['body']['ended_timers'] ?? 0) >= 1, 'move without a client clock still ends the timer');
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$offsetEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $offsetEntryId))[0] ?? null;
+assert_true((int)$offsetEntry['minutes'] >= 59 && (int)$offsetEntry['minutes'] <= 61, 'end time follows the stored timezone offset (~1h, not the server UTC clock)');
+
+// Same, using the offset sent with the move request when the entry has none
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => $startJst, 'worked_at' => date('Y-m-d')], 'POST', $adminCsrf);
+$requestOffsetEntryId = $r['body']['id'];
+$r = req('move_card', ['id' => $timeCardId, 'column_id' => $targetColId, 'position' => 0, 'tz_offset' => $jst], 'POST', $adminCsrf);
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$requestOffsetEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $requestOffsetEntryId))[0] ?? null;
+assert_true((int)$requestOffsetEntry['minutes'] >= 59 && (int)$requestOffsetEntry['minutes'] <= 61, 'move request timezone offset is used as fallback');
+
+// Bulk move ends running timers too
+$r = req('create_column', ['project_id' => $adminProjectId, 'name' => 'TT Bulk'], 'POST', $adminCsrf);
+$ttBulkCol = $r['body']['id'];
+$r = req('create_card', ['column_id' => $ttBulkCol, 'title' => 'Bulk timer card'], 'POST', $adminCsrf);
+$bulkCardId = $r['body']['id'];
+$r = req('create_time_entry', ['card_id' => $bulkCardId, 'start_time' => date('H:i', time() - 3600), 'worked_at' => date('Y-m-d')], 'POST', $adminCsrf);
+$bulkEntryId = $r['body']['id'];
+$r = req('move_all_cards', ['column_id' => $ttBulkCol, 'target_column_id' => $targetColId], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'bulk move to another stack');
+assert_eq(1, (int)($r['body']['ended_timers'] ?? 0), 'bulk move reports the ended timer');
+$r = req('list_time_entries', ['card_id' => $bulkCardId], 'GET', '', $cookieFile);
+$bulkEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $bulkEntryId))[0] ?? null;
+assert_true($bulkEntry !== null && $bulkEntry['end_time'] !== null, 'bulk move ends running timers');
+
 // Clean up: delete test entries
 $r = req('delete_time_entry', ['id' => $startEndEntryId], 'POST', $adminCsrf);
 $r = req('delete_time_entry', ['id' => $inProgressEntryId], 'POST', $adminCsrf);
 $r = req('delete_time_entry', ['id' => $overnightId], 'POST', $adminCsrf);
 $r = req('delete_time_entry', ['id' => $zeroEntryId], 'POST', $adminCsrf);
 $r = req('delete_time_entry', ['id' => $lateTimerId], 'POST', $adminCsrf);
+$r = req('delete_time_entry', ['id' => $stillRunningId], 'POST', $adminCsrf);
+$r = req('delete_time_entry', ['id' => $offsetEntryId], 'POST', $adminCsrf);
+$r = req('delete_time_entry', ['id' => $requestOffsetEntryId], 'POST', $adminCsrf);
+$r = req('delete_column', ['id' => $ttBulkCol], 'POST', $adminCsrf);
 
 // ─── UPDATES ──────────────────────────────────────────────
 section('Updates');
@@ -2127,6 +2192,8 @@ assert_true(str_contains($uploadFn, 'this.toast('), 'uploadFiles toasts failed u
 assert_true(str_contains($src, "flex-direction: column") && str_contains($src, "height: 100dvh"), 'Body is a full-height flex app shell');
 assert_true(!str_contains($src, "position: fixed") || !preg_match('/\.app-footer\s*\{[^}]*position\s*:\s*fixed/', $src), 'Footer is not position:fixed');
 assert_true(str_contains($src, "margin-top: auto"), 'Footer uses margin-top:auto to stay at bottom');
+assert_true(str_contains($src, 'the guy behind <a href="https://usebare.org?ref=Tasssks&utm_source=Tasssks&utm_media=Instance&utm_content=<?= APP_VERSION ?>"'), 'footer credits Use Bare with the current version');
+assert_true(!str_contains($src, 'abtz.co?ref='), 'footer no longer links to Abtz Labs');
 
 // Board must fit the viewport (desktop and mobile) instead of scrolling past the fold
 assert_true(!str_contains($src, 'min-height: calc(100vh - 110px)'), 'Board does not use a hardcoded viewport offset for min-height');
@@ -2169,6 +2236,13 @@ assert_true((bool) preg_match('/input\[type="text"\],\s*input\[type="email"\],\s
 assert_true((bool) preg_match('/\.modal\s*\{[^}]*max-height:\s*80dvh/s', $src), 'modal height uses dvh');
 assert_true((bool) preg_match('/\.modal\s*\{[^}]*max-height:\s*calc\(100dvh - 48px\)/s', $mobileCss), 'mobile modal height uses dvh');
 assert_true((bool) preg_match('/\.modal-body-scroll\s*\{[^}]*overscroll-behavior:\s*contain/s', $src), 'modal scroll does not chain to the page');
+
+// The update badge must not wipe project navbar actions
+$badgeFn = substr($src, strpos($src, '_updateSettingsBadge() {'));
+$badgeFn = substr($badgeFn, 0, strpos($badgeFn, '_showUpdateToast('));
+assert_true(str_contains($badgeFn, 'user-menu-slot'), 'update badge re-renders only the user menu');
+assert_true(!str_contains($badgeFn, '#navbar-actions'), 'update badge does not replace the whole navbar');
+assert_true(str_contains($src, '<div id="user-menu-slot">'), 'user menu is wrapped in its own slot');
 
 // Text replacements: typographic shortcuts
 assert_true(str_contains($src, 'TEXT_REPLACEMENTS'), 'TEXT_REPLACEMENTS map defined');
@@ -2273,7 +2347,7 @@ $src = file_get_contents(__DIR__ . '/index.php');
 
 // DB migration: position column on projects
 assert_true(str_contains($src, 'ALTER TABLE projects ADD COLUMN position'), 'migration adds position column to projects');
-assert_true(str_contains($src, "PRAGMA user_version = 8") || str_contains($src, 'user_version = 8'), 'migration version bumped to 8');
+assert_true(str_contains($src, 'user_version = 9'), 'migration version bumped to 9');
 
 // Backend: reorder_projects endpoint
 assert_true(str_contains($src, 'reorder_projects'), 'reorder_projects route exists');

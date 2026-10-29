@@ -348,7 +348,15 @@ function migrateDatabase(PDO $db): void
     }
   }
 
-  $db->exec('PRAGMA user_version = 8');
+  // Version 8 → 9: time entry timezone offset (minutes, as from JS getTimezoneOffset)
+  if ($version < 9) {
+    $cols = $db->query("PRAGMA table_info(time_entries)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    if (!in_array('tz_offset', $cols)) {
+      $db->exec("ALTER TABLE time_entries ADD COLUMN tz_offset INTEGER");
+    }
+  }
+
+  $db->exec('PRAGMA user_version = 9');
 }
 
 // ============================================================================
@@ -1557,11 +1565,15 @@ function apiMoveAllCards(): void
 
   $upd = $db->prepare("UPDATE cards SET column_id = ?, position = ?, updated_at = datetime('now') WHERE id = ?");
   $pos = 0;
+  $endedTimers = 0;
+  $nowTime = trim($input['now'] ?? '');
+  $tzOffset = isset($input['tz_offset']) && is_numeric($input['tz_offset']) ? (int) $input['tz_offset'] : null;
   foreach ($rows as $row) {
     $upd->execute([$targetId, $pos++, $row['id']]);
+    $endedTimers += endRunningTimeEntries((int) $row['id'], $nowTime, $tzOffset);
   }
 
-  jsonResponse(['ok' => true, 'moved' => $moved]);
+  jsonResponse(['ok' => true, 'moved' => $moved, 'ended_timers' => $endedTimers]);
 }
 
 function apiReorderColumns(): void
@@ -1819,6 +1831,14 @@ function apiMoveCard(): void
   $stmt = $db->prepare("UPDATE cards SET column_id = ?, position = ?, updated_at = datetime('now') WHERE id = ?");
   $stmt->execute([$newColumnId, $newPosition, $id]);
 
+  // Moving to another stack means the work is done: close any running timer.
+  // The client sends its local time so the end time matches the user's clock.
+  $endedTimers = 0;
+  if ((int) $row['column_id'] !== $newColumnId) {
+    $tzOffset = isset($input['tz_offset']) && is_numeric($input['tz_offset']) ? (int) $input['tz_offset'] : null;
+    $endedTimers = endRunningTimeEntries($id, trim($input['now'] ?? ''), $tzOffset);
+  }
+
   $others = $db->prepare("SELECT id FROM cards WHERE column_id = ? AND id != ? ORDER BY position");
   $others->execute([$newColumnId, $id]);
   $pos = 0;
@@ -1828,7 +1848,7 @@ function apiMoveCard(): void
     $pos++;
   }
 
-  jsonResponse(['ok' => true]);
+  jsonResponse(['ok' => true, 'ended_timers' => $endedTimers]);
 }
 
 // ============================================================================
@@ -2904,6 +2924,33 @@ function calcMinutesFromTimes(string $start, string $end): int
   return $minutes < 0 ? $minutes + 24 * 60 : $minutes;
 }
 
+function endRunningTimeEntries(int $cardId, string $at = '', ?int $tzOffset = null): int
+{
+  $db = getDb();
+  $stmt = $db->prepare("SELECT id, start_time, tz_offset FROM time_entries WHERE card_id = ? AND start_time IS NOT NULL AND start_time != '' AND (end_time IS NULL OR end_time = '')");
+  $stmt->execute([$cardId]);
+  $rows = $stmt->fetchAll();
+  if (!$rows) return 0;
+
+  $now = '';
+  if (preg_match('/^\d{2}:\d{2}$/', $at)) {
+    $now = $at;
+  }
+
+  $upd = $db->prepare("UPDATE time_entries SET end_time = ?, minutes = ? WHERE id = ?");
+  foreach ($rows as $row) {
+    // Prefer the client clock. Fall back to the entry's own timezone offset, so the
+    // end time is never the server's UTC time-of-day.
+    $end = $now;
+    if (!$end) {
+      $offset = $tzOffset ?? ($row['tz_offset'] !== null ? (int) $row['tz_offset'] : null);
+      $end = $offset !== null ? gmdate('H:i', time() - $offset * 60) : date('H:i');
+    }
+    $upd->execute([$end, calcMinutesFromTimes($row['start_time'], $end), $row['id']]);
+  }
+  return count($rows);
+}
+
 function apiCreateTimeEntry(): void
 {
   requireAuth();
@@ -2916,6 +2963,9 @@ function apiCreateTimeEntry(): void
   $note = trim($input['note'] ?? '');
   $startTime = trim($input['start_time'] ?? '');
   $endTime = trim($input['end_time'] ?? '');
+  $tzOffset = isset($input['tz_offset']) && is_numeric($input['tz_offset'])
+    ? max(-840, min(840, (int) $input['tz_offset']))
+    : null;
 
   if (!$cardId) jsonResponse(['error' => 'card_id is required'], 400);
   if (!$workedAt) jsonResponse(['error' => 'worked_at is required'], 400);
@@ -2934,8 +2984,8 @@ function apiCreateTimeEntry(): void
   $card = $card->fetch();
   if (!$card) jsonResponse(['error' => 'Card not found'], 404);
 
-  $stmt = $db->prepare("INSERT INTO time_entries (project_id, card_id, card_title, user_id, author_name, minutes, note, worked_at, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $stmt->execute([$card['project_id'], $cardId, $card['title'], $user['id'], $user['name'], $minutes, $note, $workedAt, $startTime ?: null, $endTime ?: null]);
+  $stmt = $db->prepare("INSERT INTO time_entries (project_id, card_id, card_title, user_id, author_name, minutes, note, worked_at, start_time, end_time, tz_offset) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $stmt->execute([$card['project_id'], $cardId, $card['title'], $user['id'], $user['name'], $minutes, $note, $workedAt, $startTime ?: null, $endTime ?: null, $tzOffset]);
 
   jsonResponse(['id' => (int) $db->lastInsertId()]);
 }
@@ -2971,8 +3021,12 @@ function apiUpdateTimeEntry(): void
     $minutes = calcMinutesFromTimes($startTime, $endTime);
   }
 
-  $stmt = $db->prepare("UPDATE time_entries SET start_time = ?, end_time = ?, note = ?, minutes = ?, worked_at = ? WHERE id = ?");
-  $stmt->execute([$startTime ?: null, $endTime ?: null, $note, $minutes, $workedAt, $id]);
+  $tzOffset = isset($input['tz_offset']) && is_numeric($input['tz_offset'])
+    ? max(-840, min(840, (int) $input['tz_offset']))
+    : null;
+
+  $stmt = $db->prepare("UPDATE time_entries SET start_time = ?, end_time = ?, note = ?, minutes = ?, worked_at = ?, tz_offset = COALESCE(?, tz_offset) WHERE id = ?");
+  $stmt->execute([$startTime ?: null, $endTime ?: null, $note, $minutes, $workedAt, $tzOffset, $id]);
 
   jsonResponse(['ok' => true]);
 }
@@ -6872,6 +6926,11 @@ $isGuestRequest = isset($_GET['guest']);
           if (method === 'GET' && data) {
             Object.keys(data).forEach(k => url += `&${k}=${encodeURIComponent(data[k])}`);
           }
+          if (method === 'POST' && data && !(data instanceof FormData) && typeof data === 'object') {
+            // Let the server know the browser's timezone, so times it computes
+            // (e.g. auto-ending a timer) match the user's clock.
+            data.tz_offset = new Date().getTimezoneOffset();
+          }
           const headers = {};
           if (method === 'POST') headers['X-CSRF-Token'] = CSRF_TOKEN;
           this._activeRequests++;
@@ -7115,7 +7174,7 @@ $isGuestRequest = isset($_GET['guest']);
             if (isOwner) {
               actions += `<button class="btn btn-ghost btn-sm" onclick="App.showSettings()"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> <span class="settings-label">Project Settings</span></button>`;
             }
-            actions += this.renderUserMenu();
+            actions += `<div id="user-menu-slot">${this.renderUserMenu()}</div>`;
             $('#navbar-actions').html(actions);
             this.loadProjectWatchState();
             if (this._activeFilters && this._activeFilters.size > 0) {
@@ -7263,8 +7322,11 @@ $isGuestRequest = isset($_GET['guest']);
                     this.api('move_card', {
                       id: cardId,
                       column_id: newColumnId,
-                      position: evt.newIndex
-                    }, 'POST');
+                      position: evt.newIndex,
+                      now: this.localTime()
+                    }, 'POST').done(res => {
+                      if (res && res.ended_timers) this.refreshBoard();
+                    });
                     $(evt.to).find('.column-empty').remove();
                     if (!$(evt.from).find('.card').length) {
                       $(evt.from).append('<p class="column-empty">Empty stack</p>');
@@ -7316,8 +7378,11 @@ $isGuestRequest = isset($_GET['guest']);
                 this.api('move_card', {
                   id: cardId,
                   column_id: newColumnId,
-                  position: evt.newIndex
-                }, 'POST');
+                  position: evt.newIndex,
+                  now: this.localTime()
+                }, 'POST').done(res => {
+                  if (res && res.ended_timers) this.refreshBoard();
+                });
                 $(evt.to).find('.column-empty').remove();
                 if (!$(evt.from).find('.card').length) {
                   $(evt.from).append('<p class="column-empty">Empty stack</p>');
@@ -7416,7 +7481,8 @@ $isGuestRequest = isset($_GET['guest']);
           if (!target) return;
           this.api('move_all_cards', {
             column_id: id,
-            target_column_id: target
+            target_column_id: target,
+            now: this.localTime()
           }, 'POST').done(r => {
             this.closeModal();
             this.refreshBoard();
@@ -7752,7 +7818,8 @@ $isGuestRequest = isset($_GET['guest']);
           this.api('move_card', {
             id: cardId,
             column_id: newColumnId,
-            position: 0
+            position: 0,
+            now: this.localTime()
           }, 'POST').done(() => {
             this.refreshBoard(() => this.openCard(cardId));
           });
@@ -8216,10 +8283,12 @@ $isGuestRequest = isset($_GET['guest']);
         },
 
         setTimeNow(inputId) {
+          $(`#${inputId}`).val(this.localTime()).trigger('change');
+        },
+
+        localTime() {
           const now = new Date();
-          const hh = String(now.getHours()).padStart(2, '0');
-          const mm = String(now.getMinutes()).padStart(2, '0');
-          $(`#${inputId}`).val(`${hh}:${mm}`).trigger('change');
+          return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         },
 
         calcTimeFromStartEnd() {
@@ -8293,12 +8362,9 @@ $isGuestRequest = isset($_GET['guest']);
         },
 
         endTimeEntry(id, cardId) {
-          const now = new Date();
-          const hh = String(now.getHours()).padStart(2, '0');
-          const mm = String(now.getMinutes()).padStart(2, '0');
           this.api('update_time_entry', {
             id,
-            end_time: `${hh}:${mm}`
+            end_time: this.localTime()
           }, 'POST').done(() => {
             this.toast('Timer ended.', 'success');
             this.loadTimeEntries(cardId);
@@ -8901,12 +8967,10 @@ $isGuestRequest = isset($_GET['guest']);
         },
 
         _updateSettingsBadge() {
-          // Re-render user menu to reflect badge change
-          if (!this.isGuest && this.user) {
-            const $actions = $('#navbar-actions');
-            if ($actions.find('.dropdown').length) {
-              $actions.html(this.renderUserMenu());
-            }
+          // Re-render only the user menu, so project actions stay in place
+          const $slot = $('#user-menu-slot');
+          if (!this.isGuest && this.user && $slot.length) {
+            $slot.html(this.renderUserMenu());
           }
         },
 
@@ -9316,6 +9380,7 @@ $isGuestRequest = isset($_GET['guest']);
                 <h4>Time Tracking</h4>
                 <p class="text-base text">Open the time section from the stopwatch button on a card. Pick the date first, then the start and end times. An end time earlier than the start time counts on the next day: <strong>23:00 → 01:00</strong> is 2h, and the entry shows <strong>+1d</strong>.</p>
                 <p class="text-base text">Leave the end time empty to keep the timer running, then press <strong>End</strong> when you stop. The form stays open after you save, and the pencil icon on any entry lets you change its date, times, or note.</p>
+                <p class="text-base text">Moving a card to another column stops its running timer automatically.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Notification Preferences</h4>
@@ -9457,7 +9522,7 @@ $isGuestRequest = isset($_GET['guest']);
         $('#view-login, #view-board, #view-setup').addClass('hidden');
         $('#view-projects').removeClass('hidden');
         $('#breadcrumb').empty();
-        $('#navbar-actions').html(this.renderUserMenu());
+        $('#navbar-actions').html(`<div id="user-menu-slot">${this.renderUserMenu()}</div>`);
         $('#guest-banner').addClass('hidden');
         this.loadProjects();
     },
@@ -9847,7 +9912,7 @@ $isGuestRequest = isset($_GET['guest']);
               }); $(App.init.bind(App));
   </script>
   <footer class="app-footer">
-    <p>Designed and built by <a href="https://x.com/rogeriotaques" target="_blank" rel="noopener noreferrer">Rogerio Taques</a>, the guy behind <a href="https://abtz.co?ref=Tasssks&utm_source=Tasssks&utm_media=Instance" target="_blank" rel="noopener noreferrer">Abtz Labs</a>.</p>
+    <p>Designed and built by <a href="https://x.com/rogeriotaques" target="_blank" rel="noopener noreferrer">Rogerio Taques</a>, the guy behind <a href="https://usebare.org?ref=Tasssks&utm_source=Tasssks&utm_media=Instance&utm_content=<?= APP_VERSION ?>" target="_blank" rel="noopener noreferrer">Use Bare</a>.</p>
     <p>#<?= APP_VERSION ?> &copy; Abtz Labs.</p>
   </footer>
 </body>
