@@ -2899,7 +2899,9 @@ function calcMinutesFromTimes(string $start, string $end): int
 {
   [$sh, $sm] = array_map('intval', explode(':', $start));
   [$eh, $em] = array_map('intval', explode(':', $end));
-  return max(0, ($eh * 60 + $em) - ($sh * 60 + $sm));
+  $minutes = ($eh * 60 + $em) - ($sh * 60 + $sm);
+  // An end time earlier than the start time means it happened on the next day.
+  return $minutes < 0 ? $minutes + 24 * 60 : $minutes;
 }
 
 function apiCreateTimeEntry(): void
@@ -2959,14 +2961,18 @@ function apiUpdateTimeEntry(): void
   $startTime = array_key_exists('start_time', $input) ? trim($input['start_time']) : $entry['start_time'];
   $endTime = array_key_exists('end_time', $input) ? trim($input['end_time']) : $entry['end_time'];
   $note = array_key_exists('note', $input) ? trim($input['note']) : $entry['note'];
+  $workedAt = array_key_exists('worked_at', $input) ? trim($input['worked_at']) : $entry['worked_at'];
+  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $workedAt)) {
+    jsonResponse(['error' => 'worked_at must be YYYY-MM-DD'], 400);
+  }
   $minutes = (int) $entry['minutes'];
 
   if ($startTime && $endTime) {
     $minutes = calcMinutesFromTimes($startTime, $endTime);
   }
 
-  $stmt = $db->prepare("UPDATE time_entries SET start_time = ?, end_time = ?, note = ?, minutes = ? WHERE id = ?");
-  $stmt->execute([$startTime ?: null, $endTime ?: null, $note, $minutes, $id]);
+  $stmt = $db->prepare("UPDATE time_entries SET start_time = ?, end_time = ?, note = ?, minutes = ?, worked_at = ? WHERE id = ?");
+  $stmt->execute([$startTime ?: null, $endTime ?: null, $note, $minutes, $workedAt, $id]);
 
   jsonResponse(['ok' => true]);
 }
@@ -5116,6 +5122,19 @@ $isGuestRequest = isset($_GET['guest']);
     .time-form-row .flex-1 {
       flex: 1;
       min-width: 0;
+    }
+
+    .time-overnight {
+      flex: none;
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .time-next-day {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
     }
 
     .time-input-group {
@@ -7481,6 +7500,7 @@ $isGuestRequest = isset($_GET['guest']);
             <div id="time-section-${cardId}" class="hidden time-section">
                 <div class="time-form">
                     <div class="time-form-row">
+                        <input type="date" id="time-date" value="${new Date().toISOString().slice(0,10)}">
                         <div class="time-input-group">
                             <input type="time" id="time-start" title="Start time">
                             <button type="button" class="btn btn-ghost time-now-btn" onclick="App.setTimeNow('time-start')" title="Set current time">Now</button>
@@ -7490,10 +7510,10 @@ $isGuestRequest = isset($_GET['guest']);
                             <input type="time" id="time-end" title="End time">
                             <button type="button" class="btn btn-ghost time-now-btn" onclick="App.setTimeNow('time-end')" title="Set current time">Now</button>
                         </div>
-                        <input type="date" id="time-date" value="${new Date().toISOString().slice(0,10)}">
                     </div>
                     <div class="time-form-row">
                         <input type="text" id="time-input" placeholder="0h 00m" class="time-input" title="Duration (auto-calculated or manual)">
+                        <span id="time-overnight" class="time-overnight hidden" title="The end time is on the next day">+1 day</span>
                         <input type="text" id="time-note" placeholder="Note (optional)" class="flex-1">
                         <button type="button" class="btn btn-primary btn-sm" onclick="App.addTimeEntry(${cardId})">+</button>
                     </div>
@@ -8156,18 +8176,19 @@ $isGuestRequest = isset($_GET['guest']);
             }
             const rows = entries.map(e => {
               const inProgress = e.start_time && !e.end_time;
+              const nextDay = e.start_time && e.end_time && e.end_time < e.start_time;
               const timeCol = inProgress ?
                 `<span class="text-muted">${e.start_time} → ?</span>` :
-                (e.start_time ? `${e.start_time}→${e.end_time} (${this.formatMinutes(e.minutes)})` : `<strong>${this.formatMinutes(e.minutes)}</strong>`);
-              const actions = inProgress ?
-                `<button type="button" class="btn btn-primary btn-xs" onclick="App.endTimeEntry(${e.id},${cardId})" title="End now">End</button> ` :
-                '';
+                (e.start_time ? `${e.start_time}→${e.end_time} (${this.formatMinutes(e.minutes)})${nextDay ? ' <span class="time-next-day" title="Ends on the next day">+1d</span>' : ''}` : `<strong>${this.formatMinutes(e.minutes)}</strong>`);
+              const actions = (inProgress ?
+                `<button type="button" class="btn btn-primary btn-xs" onclick="App.endTimeEntry(${e.id},${cardId})" title="End now">End</button> ` : '') +
+                `<button type="button" class="btn-icon btn-sm" onclick="App.editTimeEntry(${e.id},${cardId})" title="Edit">&#9998;</button> <button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button>`;
               return `<tr${inProgress ? ' class="in-progress"' : ''}>
                     <td>${timeCol}</td>
                     <td>${e.worked_at}</td>
                     <td>${this.esc(e.note)}</td>
                     <td>${this.esc(e.author_name)}</td>
-                    <td>${actions}<button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button></td>
+                    <td>${actions}</td>
                 </tr>`;
             }).join('');
             $(`#time-entries-${cardId}`).html(`
@@ -8189,17 +8210,23 @@ $isGuestRequest = isset($_GET['guest']);
         calcTimeFromStartEnd() {
           const start = $('#time-start').val();
           const end = $('#time-end').val();
-          if (start && end) {
-            const [sh, sm] = start.split(':').map(Number);
-            const [eh, em] = end.split(':').map(Number);
-            const mins = (eh * 60 + em) - (sh * 60 + sm);
-            if (mins > 0) {
-              const h = Math.floor(mins / 60);
-              const m = mins % 60;
-              $('#time-input').val((h ? h + 'h' : '') + (m ? m + 'm' : ''));
-            } else {
-              $('#time-input').val('');
-            }
+          const $hint = $('#time-overnight');
+          if (!start || !end) {
+            $hint.addClass('hidden');
+            return;
+          }
+          const [sh, sm] = start.split(':').map(Number);
+          const [eh, em] = end.split(':').map(Number);
+          let mins = (eh * 60 + em) - (sh * 60 + sm);
+          const nextDay = mins < 0;
+          if (nextDay) mins += 24 * 60;
+          $hint.toggleClass('hidden', !nextDay);
+          if (mins > 0) {
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            $('#time-input').val((h ? h + 'h' : '') + (m ? m + 'm' : ''));
+          } else {
+            $('#time-input').val('');
           }
         },
 
@@ -8236,7 +8263,7 @@ $isGuestRequest = isset($_GET['guest']);
             $('#time-end').val('');
             $('#time-input').val('');
             $('#time-note').val('');
-            $(`#time-section-${cardId}`).addClass('hidden');
+            $('#time-overnight').addClass('hidden');
             this.toast('Time entry saved.', 'success');
             this.loadTimeEntries(cardId);
             this.api('list_time_entries', {
@@ -8245,6 +8272,8 @@ $isGuestRequest = isset($_GET['guest']);
               const total = entries.reduce((s, e) => s + Number(e.minutes), 0);
               $(`#time-total-${cardId}`).text(this.formatMinutes(total));
             });
+          }).fail(xhr => {
+            this.toast(xhr.responseJSON?.error || 'Failed to save time entry');
           });
         },
 
@@ -8264,6 +8293,72 @@ $isGuestRequest = isset($_GET['guest']);
               const total = entries.reduce((s, e) => s + Number(e.minutes), 0);
               $(`#time-total-${cardId}`).text(this.formatMinutes(total));
             });
+          }).fail(xhr => {
+            this.toast(xhr.responseJSON?.error || 'Failed to end timer');
+          });
+        },
+
+        editTimeEntry(id, cardId) {
+          this.api('list_time_entries', {
+            card_id: cardId
+          }).done(entries => {
+            const e = entries.find(x => x.id == id);
+            if (!e) return;
+            this.openModal('Edit Time Entry', `
+                <form id="time-edit-form" onsubmit="event.preventDefault();App.saveTimeEntry(${e.id},${cardId})">
+                    <div class="time-form">
+                        <div class="time-form-row">
+                            <input type="date" id="edit-time-date" value="${this.escAttr(e.worked_at)}">
+                            <div class="time-input-group">
+                                <input type="time" id="edit-time-start" value="${this.escAttr(e.start_time || '')}" title="Start time">
+                                <button type="button" class="btn btn-ghost time-now-btn" onclick="App.setTimeNow('edit-time-start')" title="Set current time">Now</button>
+                            </div>
+                            <span class="time-arrow">→</span>
+                            <div class="time-input-group">
+                                <input type="time" id="edit-time-end" value="${this.escAttr(e.end_time || '')}" title="End time">
+                                <button type="button" class="btn btn-ghost time-now-btn" onclick="App.setTimeNow('edit-time-end')" title="Set current time">Now</button>
+                            </div>
+                        </div>
+                        <div class="time-form-row">
+                            <input type="text" id="edit-time-note" class="flex-1" placeholder="Note (optional)" value="${this.escAttr(e.note || '')}">
+                        </div>
+                    </div>
+                    <p class="text-sm text-light mt-2">An end time earlier than the start time counts on the next day.</p>
+                </form>
+            `, `
+                <button class="btn btn-ghost" onclick="App.openCard(${cardId})">Cancel</button>
+                <button class="btn btn-primary" onclick="App.saveTimeEntry(${e.id},${cardId})">Save</button>
+            `);
+          });
+        },
+
+        saveTimeEntry(id, cardId) {
+          const workedAt = $('#edit-time-date').val();
+          const startTime = $('#edit-time-start').val().trim();
+          const endTime = $('#edit-time-end').val().trim();
+          if (!workedAt) {
+            $('#edit-time-date').focus();
+            return;
+          }
+          if (endTime && !startTime) {
+            this.toast('Start time is required when an end time is set.');
+            $('#edit-time-start').focus();
+            return;
+          }
+          this.api('update_time_entry', {
+            id,
+            worked_at: workedAt,
+            start_time: startTime,
+            end_time: endTime,
+            note: $('#edit-time-note').val().trim()
+          }, 'POST').done(() => {
+            this.toast('Time entry updated.', 'success');
+            this.refreshBoard(() => {
+              this.openCard(cardId);
+              this.toggleTimeEntries(cardId);
+            });
+          }).fail(xhr => {
+            this.toast(xhr.responseJSON?.error || 'Failed to update time entry');
           });
         },
 
@@ -9201,6 +9296,11 @@ $isGuestRequest = isset($_GET['guest']);
             <div class="card-detail-section">
                 <h4>Watching</h4>
                 <p class="text-base text">Click <strong>Watch</strong> on a card to receive notifications when someone comments or updates it. You automatically watch cards you create or comment on.</p>
+            </div>
+            <div class="card-detail-section">
+                <h4>Time Tracking</h4>
+                <p class="text-base text">Open the time section from the stopwatch button on a card. Pick the date first, then the start and end times. An end time earlier than the start time counts on the next day: <strong>23:00 → 01:00</strong> is 2h, and the entry shows <strong>+1d</strong>.</p>
+                <p class="text-base text">Leave the end time empty to keep the timer running, then press <strong>End</strong> when you stop. The form stays open after you save, and the pencil icon on any entry lets you change its date, times, or note.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Notification Preferences</h4>

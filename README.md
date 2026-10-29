@@ -135,11 +135,13 @@ Click the eye icon on a project or card to watch it. Watchers receive notificati
 
 ### Time Tracking
 
-Track time spent on cards. Click the stopwatch icon on any card to open the time section. Three ways to log time:
+Track time spent on cards. Click the stopwatch icon on any card to open the time section. Pick the date first, then the times. Three ways to log time:
 
 - **Start/End times** — fill start time when you begin, come back later to fill end time. The duration is calculated automatically. Use the clock buttons to set the current time with one click.
 - **Manual duration** — type directly in the duration field (e.g. `1h30m`, `45m`, `2h`).
 - **In-progress entries** — set only a start time to mark work as ongoing. An "End" button appears in the entry list to complete it later.
+
+If the end time is earlier than the start time, it counts on the next day: `23:00 → 01:00` is 2h, and the entry is marked with `+1d`. The form stays open after saving, so you can log several entries in a row. Click the pencil icon on an entry to change its date, times, or note.
 
 Time entries include the date and an optional note. View aggregated reports per project from the board header (group by card, user, or day; filter by period; export to CSV).
 

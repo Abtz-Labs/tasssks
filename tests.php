@@ -1849,9 +1849,63 @@ assert_eq(403, $r['status'], 'member cannot update others time entry');
 $r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 0, 'worked_at' => '2026-08-18'], 'POST', $adminCsrf);
 assert_eq(400, $r['status'], 'zero minutes without start_time still fails');
 
+// --- Cross-midnight entries ---
+
+// 23:00 → 01:00 means the end is on the next day → 2h
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '23:00', 'end_time' => '01:00', 'worked_at' => '2026-08-19'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create cross-midnight time entry');
+$overnightId = $r['body']['id'];
+
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$overnight = array_values(array_filter($r['body'], fn($e) => $e['id'] == $overnightId))[0] ?? null;
+assert_eq(120, (int)$overnight['minutes'], 'cross-midnight entry counts 2h (23:00 → 01:00)');
+assert_eq('2026-08-19', $overnight['worked_at'], 'cross-midnight entry keeps the start date');
+
+// Equal start and end → 0 minutes (not 24h)
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '10:00', 'end_time' => '10:00', 'worked_at' => '2026-08-19'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create zero-length entry');
+$zeroEntryId = $r['body']['id'];
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$zeroEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $zeroEntryId))[0] ?? null;
+assert_eq(0, (int)$zeroEntry['minutes'], 'equal start and end times give 0 minutes');
+
+// "End" button after midnight: 22:30 → 00:30 is 2h
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '22:30', 'worked_at' => '2026-08-19'], 'POST', $adminCsrf);
+$lateTimerId = $r['body']['id'];
+$r = req('update_time_entry', ['id' => $lateTimerId, 'end_time' => '00:30'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'stop a timer after midnight');
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$lateTimer = array_values(array_filter($r['body'], fn($e) => $e['id'] == $lateTimerId))[0] ?? null;
+assert_eq(120, (int)$lateTimer['minutes'], 'timer stopped after midnight counts 2h (22:30 → 00:30)');
+
+// --- Editing a time entry: date, times, note ---
+$r = req('update_time_entry', ['id' => $overnightId, 'worked_at' => '2026-08-20', 'start_time' => '22:00', 'end_time' => '00:30', 'note' => 'Late shift'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'update time entry date, times and note');
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$edited = array_values(array_filter($r['body'], fn($e) => $e['id'] == $overnightId))[0] ?? null;
+assert_eq('2026-08-20', $edited['worked_at'], 'time entry date updated');
+assert_eq('22:00', $edited['start_time'], 'time entry start updated');
+assert_eq('00:30', $edited['end_time'], 'time entry end updated');
+assert_eq('Late shift', $edited['note'], 'time entry note updated');
+assert_eq(150, (int)$edited['minutes'], 'minutes recalculated after edit (22:00 → 00:30 = 2h30m)');
+
+// Only worked_at changes when times are omitted
+$r = req('update_time_entry', ['id' => $overnightId, 'worked_at' => '2026-08-21'], 'POST', $adminCsrf);
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$edited = array_values(array_filter($r['body'], fn($e) => $e['id'] == $overnightId))[0] ?? null;
+assert_eq('2026-08-21', $edited['worked_at'], 'date-only edit works');
+assert_eq(150, (int)$edited['minutes'], 'date-only edit keeps the duration');
+
+// Invalid date rejected
+$r = req('update_time_entry', ['id' => $overnightId, 'worked_at' => 'yesterday'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'invalid worked_at rejected');
+
 // Clean up: delete test entries
 $r = req('delete_time_entry', ['id' => $startEndEntryId], 'POST', $adminCsrf);
 $r = req('delete_time_entry', ['id' => $inProgressEntryId], 'POST', $adminCsrf);
+$r = req('delete_time_entry', ['id' => $overnightId], 'POST', $adminCsrf);
+$r = req('delete_time_entry', ['id' => $zeroEntryId], 'POST', $adminCsrf);
+$r = req('delete_time_entry', ['id' => $lateTimerId], 'POST', $adminCsrf);
 
 // ─── UPDATES ──────────────────────────────────────────────
 section('Updates');
@@ -2090,6 +2144,23 @@ assert_true((bool) preg_match('/\.time-input-group\s*\{[^}]*min-width:\s*0/s', $
 assert_true((bool) preg_match('/\.time-input-group input\[type="time"\]\s*\{[^}]*width:\s*auto/s', $mobileCss), 'time inputs shrink instead of keeping a fixed width');
 assert_true((bool) preg_match('/\.time-entries-table th,\s*\.time-entries-table td\s*\{[^}]*padding:\s*4px/s', $mobileCss), 'time entries table uses tighter padding on mobile');
 assert_true((bool) preg_match('/\[id\^="time-entries-"\]\s*\{[^}]*overflow-x:\s*auto/s', $mobileCss), 'time entries table scrolls horizontally instead of clipping on mobile');
+
+// Time tracking UX: date first, cross-midnight support, editable entries
+$datePos = strpos($src, 'id="time-date"');
+$startPos = strpos($src, 'id="time-start"');
+assert_true($datePos !== false && $startPos !== false && $datePos < $startPos, 'date picker comes before the time pickers');
+assert_true(str_contains($src, 'time-overnight'), 'time form shows an overnight hint');
+assert_true(str_contains($src, 'time-next-day'), 'cross-midnight entries are marked in the list');
+assert_true(str_contains($src, 'editTimeEntry('), 'editTimeEntry function defined');
+$timeRow = substr($src, strpos($src, 'const actions = (inProgress'));
+$timeRow = substr($timeRow, 0, strpos($timeRow, '</tr>'));
+assert_eq(1, substr_count($timeRow, 'App.confirmDeleteTimeEntry('), 'each time entry row has a single delete button');
+assert_true(str_contains($src, 'saveTimeEntry('), 'saveTimeEntry function defined');
+assert_true(str_contains($src, "api('update_time_entry'"), 'edit sends update_time_entry');
+$addTimeFn = substr($src, strpos($src, 'addTimeEntry(cardId) {'));
+$addTimeFn = substr($addTimeFn, 0, strpos($addTimeFn, 'endTimeEntry('));
+assert_true(str_contains($addTimeFn, "toast('Time entry saved.'"), 'addTimeEntry confirms the save');
+assert_true(!str_contains($addTimeFn, 'time-section'), 'time form stays open after saving an entry');
 
 // Text replacements: typographic shortcuts
 assert_true(str_contains($src, 'TEXT_REPLACEMENTS'), 'TEXT_REPLACEMENTS map defined');
