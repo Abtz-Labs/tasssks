@@ -329,4 +329,4 @@ Open an issue with steps to reproduce. Include your PHP version, browser, and an
 
 In short: use it, modify it, self-host it, distribute it. Just don't offer it as a competing hosted service where the software itself is the primary value.
 
-Designed and built by [Rogerio Taques](https://x.com/rogeriotaques), the guy behind [Use Bare](https://usebare.org?ref=Tasssks&utm_source=Tasssks&utm_media=Instance&utm_content=0.3.1).
+Designed and built by [Rogerio Taques](https://x.com/rogeriotaques), the guy behind [Use Bare](https://usebare.org?ref=Tasssks&utm_source=Tasssks&utm_media=Instance&utm_content=0.3.2).
