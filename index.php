@@ -544,6 +544,23 @@ function requireAccess(string $projectId): void
   }
 }
 
+function requireTimeAccess(string $projectId): void
+{
+  if (isAuthenticated()) return;
+
+  if (!isGuest($projectId)) {
+    jsonResponse(['error' => 'Unauthorized'], 401);
+  }
+
+  $db = getDb();
+  $stmt = $db->prepare("SELECT guest_can_view_time FROM projects WHERE id = ?");
+  $stmt->execute([$projectId]);
+  $project = $stmt->fetch();
+  if (!$project || !$project['guest_can_view_time']) {
+    jsonResponse(['error' => 'Forbidden'], 403);
+  }
+}
+
 function requireOwner(string $projectId): void
 {
   if (!isAuthenticated()) {
@@ -3035,22 +3052,23 @@ function apiListTimeEntries(): void
 {
   $projectId = $_GET['project_id'] ?? '';
   $cardId = (int) ($_GET['card_id'] ?? 0);
+  $db = getDb();
 
-  if ($projectId) {
-    requireAccess($projectId);
-  } elseif ($cardId) {
-    $db = getDb();
+  if ($cardId) {
     $card = $db->prepare("SELECT col.project_id FROM cards c JOIN columns_ col ON c.column_id = col.id WHERE c.id = ?");
     $card->execute([$cardId]);
     $row = $card->fetch();
     if (!$row) jsonResponse(['error' => 'Card not found'], 404);
+    if ($projectId && $row['project_id'] !== $projectId) {
+      jsonResponse(['error' => 'Card not found'], 404);
+    }
     $projectId = $row['project_id'];
-    requireAccess($projectId);
-  } else {
+  } elseif (!$projectId) {
     jsonResponse(['error' => 'project_id or card_id is required'], 400);
   }
 
-  $db = getDb();
+  requireTimeAccess($projectId);
+
   $where = [];
   $params = [];
 
@@ -3106,18 +3124,7 @@ function apiTimeReport(): void
   $projectId = $_GET['project_id'] ?? '';
   if (!$projectId) jsonResponse(['error' => 'project_id is required'], 400);
 
-  $guestToken = $_GET['guest'] ?? $_SESSION['guest_token'] ?? null;
-  if ($guestToken) {
-    $db = getDb();
-    $project = $db->prepare("SELECT guest_can_view_time FROM projects WHERE id = ?");
-    $project->execute([$projectId]);
-    $project = $project->fetch();
-    if (!$project || !$project['guest_can_view_time']) {
-      jsonResponse(['error' => 'Forbidden'], 403);
-    }
-  } else {
-    requireAccess($projectId);
-  }
+  requireTimeAccess($projectId);
 
   $db = getDb();
   $where = ['te.project_id = ?'];

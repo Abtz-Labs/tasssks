@@ -144,3 +144,11 @@ Session checkpoints for continuity across sessions.
 - QoL: every modal now opens scrolled to the top. `openModal()` chains `.scrollTop(0)` after `.html(body)` — previously a long card opened after a scrolled one inherited the old scroll.
 - Bumped 0.3.0 → 0.3.1 (`APP_VERSION`, `package.json`, `tests.php` assertion).
 - **Serious**: running `just test` clobbered the working `index.php`. The test calls `check_update` (fetches `GITHUB_RAW_URL` = GitHub `main`, still v0.3.0) then `apply_update`; `apiApplyUpdate` only rejected `=== APP_VERSION`, so local 0.3.1 got **downgraded** to remote 0.3.0 and the pre-update file was saved to `index.php.bak`. Fixed: `apply_update` now requires `version_compare($newVersion, APP_VERSION, '>')` (no downgrades), and the "without prior check" test runs before `check_update` caches content. Restored from `index.php.bak`. Test count: 590 (all passing).
+
+## 2026-11-07 (time-tracking access control)
+
+- Confirmed two reported access-control bugs: `apiTimeReport()` treated any non-empty `?guest=` as a guest (no token/project/revocation check), and `apiListTimeEntries()` used `requireAccess()`, which ignores `guest_can_view_time`.
+- Added `requireTimeAccess($projectId)`: authenticated users pass; guests must have a token row for that project and the project's `guest_can_view_time` must be on. Rewriting/deleting the guest row (revocation) now invalidates the link.
+- Also closed an adjacent hole in the same endpoint: `project_id` was checked for access but `card_id` was queried without verifying the card belongs to that project. `card_id` now resolves the card's real project first and mismatches return 404.
+- Regression tests added: invalid token, token from another project, revoked token (JSON + CSV), guest list without permission, guest list with permission, cross-project card. Test count: 668 (all passing).
+- `security.txt` is not in this repository, so the expired `Expires` date could not be updated here.

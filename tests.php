@@ -1779,6 +1779,46 @@ $r = req('time_report', ['project_id' => $adminProjectId, 'guest' => $guestToken
 assert_eq(200, $r['status'], 'guest can access time report when enabled');
 assert_true(isset($r['body']['total_minutes']), 'guest sees report data');
 
+// Regression: guest token must exist and belong to the project
+$r = req('time_report', ['project_id' => $adminProjectId, 'guest' => 'not-a-valid-token'], 'GET', '', $guestCookie);
+assert_eq(401, $r['status'], 'time report rejects an invalid guest token');
+
+$r = req('create_guest', ['project_id' => $memberProjectId, 'name' => 'Other Project Guest'], 'POST', $adminCsrf);
+$otherGuestToken = $r['body']['token'];
+$r = req('time_report', ['project_id' => $adminProjectId, 'guest' => $otherGuestToken], 'GET', '', $guestCookie);
+assert_eq(401, $r['status'], 'time report rejects a guest token from another project');
+
+$r = req('time_report', ['project_id' => $adminProjectId, 'guest' => $otherGuestToken, 'format' => 'csv'], 'GET', '', $guestCookie);
+assert_eq(401, $r['status'], 'csv time report rejects a guest token from another project');
+
+// Regression: revoked guest links stop working
+$r = req('create_guest', ['project_id' => $adminProjectId, 'name' => 'Revoked Guest'], 'POST', $adminCsrf);
+$revokedGuestId = $r['body']['id'];
+$revokedGuestToken = $r['body']['token'];
+$r = req('delete_guest', ['id' => $revokedGuestId], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'revoke guest link');
+$r = req('time_report', ['project_id' => $adminProjectId, 'guest' => $revokedGuestToken], 'GET', '', $guestCookie);
+assert_eq(401, $r['status'], 'revoked guest token cannot access time report');
+
+// Regression: listing time entries honors guest_can_view_time
+$r = req('update_project', ['id' => $adminProjectId, 'guest_can_view_time' => 0], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'disable guest_can_view_time for list test');
+$r = req('list_time_entries', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
+assert_eq(403, $r['status'], 'guest without time permission cannot list time entries');
+$r = req('update_project', ['id' => $adminProjectId, 'guest_can_view_time' => 1], 'POST', $adminCsrf);
+$r = req('list_time_entries', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
+assert_eq(200, $r['status'], 'guest with time permission can list time entries');
+
+// Regression: card_id cannot be used to read another project's entries
+$r = req('list_columns', ['project_id' => $memberProjectId]);
+$memberCol = $r['body'][0]['id'] ?? 0;
+$r = req('create_card', ['column_id' => $memberCol, 'title' => 'Foreign time card'], 'POST', $adminCsrf);
+$foreignCardId = $r['body']['id'] ?? 0;
+$r = req('create_time_entry', ['card_id' => $foreignCardId, 'minutes' => 15, 'worked_at' => '2026-08-17'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create time entry on foreign card');
+$r = req('list_time_entries', ['project_id' => $adminProjectId, 'card_id' => $foreignCardId, 'guest' => $guestToken], 'GET', '', $guestCookie);
+assert_eq(404, $r['status'], 'list time entries rejects a card from another project');
+
 // list_projects includes guest_can_view_time
 $r = req('list_projects');
 $proj = array_values(array_filter($r['body'], fn($p) => $p['id'] === $adminProjectId))[0] ?? null;
