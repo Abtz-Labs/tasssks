@@ -1,16 +1,17 @@
-# Database files
+# Development database files
 *.sqlite3
 *.sqlite
 *.sqlite-*
 *.db
 
-# Server PID file
+# Development server PID file
 .server.pid
 
 # Misc
 uploads/
-docs/plans/*.md
+docs/
 bare.config.json
+package.json
 
 # Updater backup
 index.php.bak
