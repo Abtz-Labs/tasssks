@@ -43,16 +43,31 @@ if (php_sapi_name() === 'cli-server') {
 // ============================================================================
 
 define('APP_NAME', 'Tasssks');
-define('APP_VERSION', '0.3.2');
+define('APP_VERSION', '0.3.3');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', getenv('TASSSKS_UPLOAD_DIR') ?: __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', (int) (getenv('TASSSKS_MAX_UPLOAD_SIZE') ?: (2 * 1024 * 1024)));
 define('IMAGE_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif', 'webp']);
 define('ALLOWED_UPLOAD_EXTENSIONS', [
-  'jpg', 'jpeg', 'png', 'gif', 'webp',
-  'pdf', 'txt', 'csv', 'md',
-  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-  'odt', 'ods', 'odp', 'zip',
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'pdf',
+  'txt',
+  'csv',
+  'md',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+  'odt',
+  'ods',
+  'odp',
+  'zip',
 ]);
 define('FORCE_HTTPS', getenv('TASSSKS_FORCE_HTTPS') === '1');
 define('GITHUB_RAW_URL', 'https://raw.githubusercontent.com/Abtz-Labs/tasssks/main/index.php');
@@ -4061,13 +4076,13 @@ $isGuestRequest = isset($_GET['guest']);
       border-color: var(--danger);
     }
 
-    .btn-danger > svg {
+    .btn-danger>svg {
       position: absolute;
       left: 10px;
     }
 
-    .btn-danger > span,
-    .btn-danger > :not(svg) {
+    .btn-danger>span,
+    .btn-danger> :not(svg) {
       margin: 0 auto;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -4144,7 +4159,7 @@ $isGuestRequest = isset($_GET['guest']);
     .ql-tooltip {
       position: absolute;
       z-index: 10;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 4px;
@@ -5283,19 +5298,19 @@ $isGuestRequest = isset($_GET['guest']);
       min-width: 0;
     }
 
-    .btn-watch > svg {
+    .btn-watch>svg {
       position: absolute;
       left: 10px;
     }
 
-    .btn-watch > span {
+    .btn-watch>span {
       margin: 0 auto;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .btn-danger > svg {
+    .btn-danger>svg {
       position: absolute;
       left: 10px;
     }
@@ -6220,7 +6235,7 @@ $isGuestRequest = isset($_GET['guest']);
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
       overflow: hidden;
       flex-direction: column;
     }
@@ -6628,11 +6643,11 @@ $isGuestRequest = isset($_GET['guest']);
   <div id="view-login" class="projects-view hidden">
     <div class="auth-container text-center">
       <h1 class="mb-6 login-heading"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
-      </svg> <span id="login-brand"><?= APP_NAME ?></span></h1>
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
+        </svg> <span id="login-brand"><?= APP_NAME ?></span></h1>
       <form onsubmit="event.preventDefault();App.login()">
         <div class="form-group">
           <input type="text" id="login-email" placeholder="Email" autocomplete="email">
@@ -6659,7 +6674,10 @@ $isGuestRequest = isset($_GET['guest']);
     <div class="projects-header">
       <h1>Projects</h1>
       <div class="search-wrapper">
-        <span class="search-icon"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <span class="search-icon"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg></span>
         <input type="text" id="project-search" placeholder="Search projects..." oninput="App.searchProjects(this.value)">
       </div>
       <button class="btn btn-primary" onclick="App.showNewProjectModal()">+ New Project</button>
@@ -6679,7 +6697,9 @@ $isGuestRequest = isset($_GET['guest']);
         <h2 id="modal-title">Modal</h2>
         <button class="modal-close" onclick="App.closeModal()">&times;</button>
       </div>
-      <div class="modal-body" id="modal-body"><div class="modal-body-scroll"></div></div>
+      <div class="modal-body" id="modal-body">
+        <div class="modal-body-scroll"></div>
+      </div>
       <div class="modal-footer" id="modal-footer"></div>
     </div>
   </div>
@@ -7379,7 +7399,9 @@ $isGuestRequest = isset($_GET['guest']);
                 const p = this.projects.find(pr => pr.id === c.dataset.id);
                 return p ? p.id : null;
               }).filter(Boolean);
-              this.api('reorder_projects', { order }, 'POST');
+              this.api('reorder_projects', {
+                order
+              }, 'POST');
               el.querySelectorAll('.project-card').forEach((c, i) => {
                 c.querySelector('.project-index').textContent = i + 1;
               });
@@ -8138,7 +8160,9 @@ $isGuestRequest = isset($_GET['guest']);
           const btnRow = `<div style="display:flex;gap:8px;margin-top:8px;justify-content:space-between"><button class="btn btn-ghost btn-sm" onclick="App.cancelEditDescriptionInline(${cardId})">Cancel</button><button class="btn btn-primary btn-sm" onclick="App.saveCardDescriptionInline(${cardId})">Save</button></div>`;
           content.outerHTML = `<div id="desc-content-${cardId}" class="quill-wrap"><div id="edit-card-desc"></div></div>${btnRow}`;
           setTimeout(() => {
-            this._editDescQuill = _initQuill('#edit-card-desc', { html });
+            this._editDescQuill = _initQuill('#edit-card-desc', {
+              html
+            });
             this._editDescKeyHandler = (e) => {
               if (e.key === 'Escape') {
                 e.stopPropagation();
@@ -8290,7 +8314,9 @@ $isGuestRequest = isset($_GET['guest']);
             const cardId = this._pendingTagCardId;
             this._pendingTagCardId = null;
             this.closeModal();
-            this.refreshBoard(() => { if (cardId) this.openCard(cardId); });
+            this.refreshBoard(() => {
+              if (cardId) this.openCard(cardId);
+            });
           });
         },
 
@@ -8650,7 +8676,7 @@ $isGuestRequest = isset($_GET['guest']);
                 `<span class="text-muted">${start} → ?</span>` :
                 (e.start_time ? `${start}→${end} (${this.formatMinutes(e.minutes)})${nextDay ? ' <span class="time-next-day" title="Ends on the next day">+1d</span>' : ''}` : `<strong>${this.formatMinutes(e.minutes)}</strong>`);
               const actions = (inProgress ?
-                `<button type="button" class="btn btn-primary btn-xs" onclick="App.endTimeEntry(${e.id},${cardId})" title="End now">End</button> ` : '') +
+                  `<button type="button" class="btn btn-primary btn-xs" onclick="App.endTimeEntry(${e.id},${cardId})" title="End now">End</button> ` : '') +
                 `<button type="button" class="btn-icon btn-sm" onclick="App.editTimeEntry(${e.id},${cardId})" title="Edit">&#9998;</button> <button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button>`;
               return `<tr${inProgress ? ' class="in-progress"' : ''}>
                     <td>${timeCol}</td>
@@ -9462,89 +9488,220 @@ $isGuestRequest = isset($_GET['guest']);
                             <div class="form-group">
                                 <label class="text-sm text-light">Cycle Reset Day</label>
                                 <select id="cycle-reset-day" class="select-sm" onchange="App.updateProjectSetting('cycle_reset_day', parseInt(this.value))">
-                                    ${Array.from({length:31},(_,i)=>i+1).map(d => `<option value="${d}" ${(this.currentProject.cycle_reset_day ?? 1) == d ? 'selected' : ''}>${d}</option>`).join('')}
-                                </select>
-                            </div>
-                        </div>
-                        <span class="text-xs text-muted">Billing cycle resets on the selected day of each month (e.g. 25th → 24th next month).</span>
-                    </div>
-                </div>
-                <div id="ptab-webhooks" class="settings-tab-content hidden">
-                    <div class="card-detail-section"><h4>Webhooks <a href="#" onclick="event.preventDefault();App.showWebhookPayloads()" class="text-xs font-normal ml-2">View payload format</a></h4>
-                        <p class="text-sm text-light mb-2">Receive notifications via Slack, Telegram, or any HTTP endpoint.</p>
-                        ${webhookRows}
-                        <div id="webhook-form" class="mt-2" style="padding:12px;background:var(--bg);border-radius:var(--radius)">
-                            <input type="hidden" id="webhook-edit-id">
-                            <div class="form-group">
-                                <label class="text-sm text-light">Type</label>
-                                <select id="webhook-type" class="select-sm" onchange="App.togglePresetFields()">
-                                    <option value="generic">Generic JSON</option>
-                                    <option value="slack">Slack</option>
-                                    <option value="telegram">Telegram</option>
-                                </select>
-                            </div>
-                            <div class="form-group" id="webhook-url-group">
-                                <label class="text-sm text-light">URL</label>
-                                <input type="text" id="webhook-url" placeholder="https://example.com/webhook">
-                                <div class="form-group-hint" id="slack-hint" style="display:none">Create a webhook at <a href="https://api.slack.com/apps" target="_blank" rel="noopener">api.slack.com/apps</a></div>
-                            </div>
-                            <div id="telegram-fields" class="hidden">
-                                <div class="form-group">
-                                    <label class="text-sm text-light">Bot Token</label>
-                                    <input type="text" id="webhook-bot-token" placeholder="123456:ABC-DEF...">
-                                    <div class="form-group-hint">Get a token from <a href="https://t.me/BotFather" target="_blank" rel="noopener">t.me/BotFather</a></div>
-                                </div>
-                                <div class="form-group">
-                                    <label class="text-sm text-light">Chat ID</label>
-                                    <input type="text" id="webhook-chat-id" placeholder="-1001234567890">
-                                </div>
-                            </div>
-                            <div id="slack-template" class="hidden">
-                                <div class="form-group">
-                                    <label class="text-sm text-light">Message Template <span style="opacity:0.5">(optional)</span></label>
-                                    <textarea id="webhook-slack-template" rows="2" placeholder="*{{event}}*: {{project}} — {{title}}"></textarea>
-                                    <div class="form-group-hint">Supports: {{event}}, {{project}}, {{actor}}, {{title}}, {{timestamp}}</div>
-                                </div>
-                            </div>
-                            <div id="telegram-template" class="hidden">
-                                <div class="form-group">
-                                    <label class="text-sm text-light">Message Template <span style="opacity:0.5">(optional)</span></label>
-                                    <textarea id="webhook-telegram-template" rows="2" placeholder="&lt;b&gt;{{event}}&lt;/b&gt;: {{project}} — {{title}}"></textarea>
-                                    <div class="form-group-hint">Supports: {{event}}, {{project}}, {{actor}}, {{title}}, {{timestamp}}</div>
-                                </div>
-                            </div>
-                            <div class="flex-center gap-sm">
-                                <button class="btn btn-primary btn-sm" onclick="App.saveWebhook()">Save</button>
-                                <button class="btn btn-ghost btn-sm" onclick="App.cancelWebhook()">Cancel</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div id="ptab-guests" class="settings-tab-content hidden">
-                    <div class="card-detail-section"><h4>Guest Permissions</h4>
-                        <label class="flex-center gap-2 cursor-pointer mb-2 text-lg font-normal text">
-                            <input type="checkbox" id="guest-create-cards" ${guestCreate} onchange="App.updateGuestPerm('guest_can_create_cards', this.checked)">
-                            Allow guests to create cards in the first column
-                        </label>
-                        <label class="flex-center gap-2 cursor-pointer text-lg font-normal text">
-                            <input type="checkbox" id="guest-sort-cards" ${guestSort} onchange="App.updateGuestPerm('guest_can_sort_cards', this.checked)">
-                            Allow guests to sort cards in the first column
-                        </label>
-                        <label class="flex-center gap-2 cursor-pointer text-lg font-normal text">
-                            <input type="checkbox" id="guest-view-time" ${guestViewTime} onchange="App.updateGuestPerm('guest_can_view_time', this.checked)">
-                            Allow guests to view the time report
-                        </label>
-                    </div>
-                    <div class="card-detail-section"><h4>Guest Access</h4>
-                        ${guestRows}
-                        <div class="tag-picker mt-3">
-                            <input type="text" id="new-guest-name" placeholder="Guest name" class="tag-input">
-                            <input type="email" id="new-guest-email" placeholder="Email (optional)" class="flex-1 min-w-sm">
-                            <button class="btn btn-primary btn-sm" onclick="App.createGuest()">Add Guest</button>
-                        </div>
-                    </div>
-                </div>
-            `, '');
+                                    ${Array.from({length:31},(_,i)=>i+1).map(d => ` < option value = "${d}"
+                    $ {
+                      (this.currentProject.cycle_reset_day ?? 1) == d ? 'selected' : ''
+                    } > $ {
+                      d
+                    } < /option>`).join('')} <
+                    /select> <
+                    /div> <
+                    /div> <
+                    span class = "text-xs text-muted" > Billing cycle resets on the selected day of each month(e.g.25 th→ 24 th next month). < /span> <
+                    /div> <
+                    /div> <
+                    div id = "ptab-webhooks"
+                    class = "settings-tab-content hidden" >
+                    <
+                    div class = "card-detail-section" > < h4 > Webhooks < a href = "#"
+                    onclick = "event.preventDefault();App.showWebhookPayloads()"
+                    class = "text-xs font-normal ml-2" > View payload format < /a></h4 >
+                    <
+                    p class = "text-sm text-light mb-2" > Receive notifications via Slack, Telegram, or any HTTP endpoint. < /p>
+                    $ {
+                      webhookRows
+                    } <
+                    div id = "webhook-form"
+                    class = "mt-2"
+                    style = "padding:12px;background:var(--bg);border-radius:var(--radius)" >
+                    <
+                    input type = "hidden"
+                    id = "webhook-edit-id" >
+                    <
+                    div class = "form-group" >
+                    <
+                    label class = "text-sm text-light" > Type < /label> <
+                    select id = "webhook-type"
+                    class = "select-sm"
+                    onchange = "App.togglePresetFields()" >
+                    <
+                    option value = "generic" > Generic JSON < /option> <
+                    option value = "slack" > Slack < /option> <
+                    option value = "telegram" > Telegram < /option> <
+                    /select> <
+                    /div> <
+                    div class = "form-group"
+                    id = "webhook-url-group" >
+                    <
+                    label class = "text-sm text-light" > URL < /label> <
+                    input type = "text"
+                    id = "webhook-url"
+                    placeholder = "https://example.com/webhook" >
+                    <
+                    div class = "form-group-hint"
+                    id = "slack-hint"
+                    style = "display:none" > Create a webhook at < a href = "https://api.slack.com/apps"
+                    target = "_blank"
+                    rel = "noopener" > api.slack.com / apps < /a></div >
+                    <
+                    /div> <
+                    div id = "telegram-fields"
+                    class = "hidden" >
+                    <
+                    div class = "form-group" >
+                    <
+                    label class = "text-sm text-light" > Bot Token < /label> <
+                    input type = "text"
+                    id = "webhook-bot-token"
+                    placeholder = "123456:ABC-DEF..." >
+                    <
+                    div class = "form-group-hint" > Get a token from < a href = "https://t.me/BotFather"
+                    target = "_blank"
+                    rel = "noopener" > t.me / BotFather < /a></div >
+                    <
+                    /div> <
+                    div class = "form-group" >
+                    <
+                    label class = "text-sm text-light" > Chat ID < /label> <
+                    input type = "text"
+                    id = "webhook-chat-id"
+                    placeholder = "-1001234567890" >
+                    <
+                    /div> <
+                    /div> <
+                    div id = "slack-template"
+                    class = "hidden" >
+                    <
+                    div class = "form-group" >
+                    <
+                    label class = "text-sm text-light" > Message Template < span style = "opacity:0.5" > (optional) < /span></label >
+                    <
+                    textarea id = "webhook-slack-template"
+                    rows = "2"
+                    placeholder = "*{{event}}*: {{project}} — {{title}}" > < /textarea> <
+                    div class = "form-group-hint" > Supports: {
+                      {
+                        event
+                      }
+                    }, {
+                      {
+                        project
+                      }
+                    }, {
+                      {
+                        actor
+                      }
+                    }, {
+                      {
+                        title
+                      }
+                    }, {
+                      {
+                        timestamp
+                      }
+                    } < /div> <
+                    /div> <
+                    /div> <
+                    div id = "telegram-template"
+                    class = "hidden" >
+                    <
+                    div class = "form-group" >
+                    <
+                    label class = "text-sm text-light" > Message Template < span style = "opacity:0.5" > (optional) < /span></label >
+                    <
+                    textarea id = "webhook-telegram-template"
+                    rows = "2"
+                    placeholder = "&lt;b&gt;{{event}}&lt;/b&gt;: {{project}} — {{title}}" > < /textarea> <
+                    div class = "form-group-hint" > Supports: {
+                      {
+                        event
+                      }
+                    }, {
+                      {
+                        project
+                      }
+                    }, {
+                      {
+                        actor
+                      }
+                    }, {
+                      {
+                        title
+                      }
+                    }, {
+                      {
+                        timestamp
+                      }
+                    } < /div> <
+                    /div> <
+                    /div> <
+                    div class = "flex-center gap-sm" >
+                    <
+                    button class = "btn btn-primary btn-sm"
+                    onclick = "App.saveWebhook()" > Save < /button> <
+                    button class = "btn btn-ghost btn-sm"
+                    onclick = "App.cancelWebhook()" > Cancel < /button> <
+                    /div> <
+                    /div> <
+                    /div> <
+                    /div> <
+                    div id = "ptab-guests"
+                    class = "settings-tab-content hidden" >
+                    <
+                    div class = "card-detail-section" > < h4 > Guest Permissions < /h4> <
+                    label class = "flex-center gap-2 cursor-pointer mb-2 text-lg font-normal text" >
+                    <
+                    input type = "checkbox"
+                    id = "guest-create-cards"
+                    $ {
+                      guestCreate
+                    }
+                    onchange = "App.updateGuestPerm('guest_can_create_cards', this.checked)" >
+                    Allow guests to create cards in the first column <
+                    /label> <
+                    label class = "flex-center gap-2 cursor-pointer text-lg font-normal text" >
+                    <
+                    input type = "checkbox"
+                    id = "guest-sort-cards"
+                    $ {
+                      guestSort
+                    }
+                    onchange = "App.updateGuestPerm('guest_can_sort_cards', this.checked)" >
+                    Allow guests to sort cards in the first column <
+                    /label> <
+                    label class = "flex-center gap-2 cursor-pointer text-lg font-normal text" >
+                    <
+                    input type = "checkbox"
+                    id = "guest-view-time"
+                    $ {
+                      guestViewTime
+                    }
+                    onchange = "App.updateGuestPerm('guest_can_view_time', this.checked)" >
+                    Allow guests to view the time report <
+                    /label> <
+                    /div> <
+                    div class = "card-detail-section" > < h4 > Guest Access < /h4>
+                    $ {
+                      guestRows
+                    } <
+                    div class = "tag-picker mt-3" >
+                    <
+                    input type = "text"
+                    id = "new-guest-name"
+                    placeholder = "Guest name"
+                    class = "tag-input" >
+                    <
+                    input type = "email"
+                    id = "new-guest-email"
+                    placeholder = "Email (optional)"
+                    class = "flex-1 min-w-sm" >
+                    <
+                    button class = "btn btn-primary btn-sm"
+                    onclick = "App.createGuest()" > Add Guest < /button> <
+                    /div> <
+                    /div> <
+                    /div>
+                    `, '');
             this.switchProjectSettingsTab(tab);
         });
     },
@@ -9555,7 +9712,11 @@ $isGuestRequest = isset($_GET['guest']);
         const idx = tabs.indexOf(tab);
         $('.settings-tab').removeClass('active').eq(idx).addClass('active');
         $('.settings-tab-content').addClass('hidden');
-        $(`#ptab-${tab}`).removeClass('hidden');
+        $(`
+                    #ptab - $ {
+                      tab
+                    }
+                    `).removeClass('hidden');
     },
 
     updateProjectName() {
@@ -9590,14 +9751,22 @@ $isGuestRequest = isset($_GET['guest']);
     },
 
     editGuest(id, name, email) {
-        this.openModal('Edit Guest', `
-            <div class="form-group"><label>Name</label>
-                <input type="text" id="edit-guest-name" value="${this.escAttr(name)}">
-            </div>
-            <div class="form-group"><label>Email (optional)</label>
-                <input type="email" id="edit-guest-email" value="${this.escAttr(email)}" placeholder="guest@example.com">
-            </div>
-        `, `<button class="btn btn-ghost" onclick="App.showSettings('guests')">Cancel</button> <button class="btn btn-primary" onclick="App.saveGuest(${id})">Save</button>`);
+        this.openModal('Edit Guest', ` <
+                    div class = "form-group" > < label > Name < /label> <
+                    input type = "text"
+                    id = "edit-guest-name"
+                    value = "${this.escAttr(name)}" >
+                    <
+                    /div> <
+                    div class = "form-group" > < label > Email(optional) < /label> <
+                    input type = "email"
+                    id = "edit-guest-email"
+                    value = "${this.escAttr(email)}"
+                    placeholder = "guest@example.com" >
+                    <
+                    /div>
+                    `, ` < button class = "btn btn-ghost"
+                    onclick = "App.showSettings('guests')" > Cancel < /button> <button class="btn btn-primary" onclick="App.saveGuest(${id})">Save</button > `);
     },
     saveGuest(id) {
         const name = $('#edit-guest-name').val().trim();
@@ -9691,117 +9860,157 @@ $isGuestRequest = isset($_GET['guest']);
     toggleWebhook(id) { this.api('toggle_webhook', { id }, 'POST').done(() => this.showSettings('webhooks')); },
 
     showWebhookPayloads() {
-        this.openModal('Webhook Payload Format', `
-            <div class="mb-3"><button class="btn btn-ghost btn-sm" onclick="App.showSettings('webhooks')">&larr; Back to Settings</button></div>
-            <div class="card-detail-section">
-                <h4>Generic</h4>
-                <p class="text-sm text-light mb-2">POST with <code>Content-Type: application/json</code></p>
-                <pre class="code-block">{
-  "event": "new_card",
-  "project": "My Project",
-  "actor": "John Doe",
-  "payload": {
-    "card_id": 42,
-    "title": "Fix login bug"
-  },
-  "timestamp": "2026-08-13T10:30:00+00:00"
-}</pre>
-                <p class="text-xs text-light mt-2">Events: <code>new_card</code>, <code>new_comment</code>, <code>card_updated</code>, <code>new_project</code>, <code>password_changed</code></p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Slack</h4>
-                <p class="text-sm text-light mb-2">POST to your Slack Incoming Webhook URL</p>
-                <pre class="code-block">{
-  "text": "John Doe created card \\"Fix login bug\\" in My Project"
-}</pre>
-            </div>
-            <div class="card-detail-section">
-                <h4>Telegram</h4>
-                <p class="text-sm text-light mb-2">POST to <code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage</code></p>
-                <pre class="code-block">{
-  "text": "John Doe created card \\"Fix login bug\\" in My Project",
-  "parse_mode": "HTML"
-}</pre>
-                <p class="text-xs text-light mt-2">Set the webhook URL to include <code>chat_id</code> as a query param, e.g.:<br><code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;</code></p>
-            </div>
-        `, '');
+        this.openModal('Webhook Payload Format', ` <
+                    div class = "mb-3" > < button class = "btn btn-ghost btn-sm"
+                    onclick = "App.showSettings('webhooks')" > & larr; Back to Settings < /button></div >
+                    <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Generic < /h4> <
+                    p class = "text-sm text-light mb-2" > POST with < code > Content - Type: application / json < /code></p >
+                    <
+                    pre class = "code-block" > {
+                      "event": "new_card",
+                      "project": "My Project",
+                      "actor": "John Doe",
+                      "payload": {
+                        "card_id": 42,
+                        "title": "Fix login bug"
+                      },
+                      "timestamp": "2026-08-13T10:30:00+00:00"
+                    } < /pre> <
+                    p class = "text-xs text-light mt-2" > Events: < code > new_card < /code>, <code>new_comment</code > , < code > card_updated < /code>, <code>new_project</code > , < code > password_changed < /code></p >
+                    <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Slack < /h4> <
+                    p class = "text-sm text-light mb-2" > POST to your Slack Incoming Webhook URL < /p> <
+                    pre class = "code-block" > {
+                      "text": "John Doe created card \\"
+                      Fix login bug\\ " in My Project"
+                    } < /pre> <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Telegram < /h4> <
+                    p class = "text-sm text-light mb-2" > POST to < code > https: //api.telegram.org/bot&lt;TOKEN&gt;/sendMessage</code></p>
+                    <
+                    pre class = "code-block" > {
+                      "text": "John Doe created card \\"
+                      Fix login bug\\ " in My Project",
+                      "parse_mode": "HTML"
+                    } < /pre> <
+                    p class = "text-xs text-light mt-2" > Set the webhook URL to include < code > chat_id < /code> as a query param, e.g.:<br><code>https:/ / api.telegram.org / bot & lt; TOKEN & gt;
+                    /sendMessage?chat_id=&lt;CHAT_ID&gt;</code > < /p> <
+                    /div>
+                    `, '');
     },
 
     showHelp() {
         const baseUrl = location.origin + location.pathname;
-        this.openModal('Help', `
-            <div class="card-detail-section">
-                <h4>Columns</h4>
-                <p class="text-base text">Click the <strong>⋮</strong> button in a column header to open its menu.</p>
-                <ul class="text-base text pl-5 mb-0">
-                    <li><strong>Move all cards to...</strong> — move every card in that column to another column. The cards keep their order and land at the top of the target column.</li>
-                    <li><strong>Delete column</strong> — delete the column and all its cards.</li>
-                </ul>
-                <p class="text-sm text-light mt-2">The first column has no menu, because it cannot be deleted.</p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Scheduled Tasks (Cron)</h4>
-                <p class="text-base text mb-2">Set up two cron jobs to handle email notifications:</p>
-                <pre class="code-block"># Immediate notifications (every minute)
-* * * * * curl -s "${baseUrl}?action=send_notifications&cron_token=YOUR_TOKEN" > /dev/null
+        this.openModal('Help', ` <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Columns < /h4> <
+                    p class = "text-base text" > Click the < strong > ⋮ < /strong> button in a column header to open its menu.</p >
+                    <
+                    ul class = "text-base text pl-5 mb-0" >
+                    <
+                    li > < strong > Move all cards to... < /strong> — move every card in that column to another column. The cards keep their order and land at the top of the target column.</li >
+                    <
+                    li > < strong > Delete column < /strong> — delete the column and all its cards.</li >
+                    <
+                    /ul> <
+                    p class = "text-sm text-light mt-2" > The first column has no menu, because it cannot be deleted. < /p> <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Scheduled Tasks(Cron) < /h4> <
+                    p class = "text-base text mb-2" > Set up two cron jobs to handle email notifications: < /p> <
+                    pre class = "code-block" > # Immediate notifications(every minute) *
+                    * * * * curl - s "${baseUrl}?action=send_notifications&cron_token=YOUR_TOKEN" > /dev/null
 
-# Daily digest (once a day at 8 AM)
-0 8 * * * curl -s "${baseUrl}?action=send_digest&cron_token=YOUR_TOKEN" > /dev/null</pre>
-                <p class="text-sm text-light mt-2">Generate a cron token in <strong>App Settings &gt; Cron Token</strong>. The token authenticates the request without a browser session.</p>
-                <p class="text-sm text-light mt-2"><strong>send_notifications</strong> — sends individual emails to users with "Immediate" delivery preference.<br><strong>send_digest</strong> — sends a batched summary to users with "Daily summary" preference and to guest watchers.</p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Webhooks</h4>
-                <p class="text-base text mb-2">Configure webhooks in <strong>Project Settings</strong> to receive real-time notifications for:</p>
-                <ul class="text-base text pl-5 mb-0">
-                    <li>New cards created</li>
-                    <li>Comments posted</li>
-                    <li>Cards updated</li>
-                    <li>New projects created</li>
-                </ul>
-                <p class="text-sm text-light mt-2">Supported integrations: Slack (Incoming Webhooks), Telegram (Bot API), or any HTTP endpoint that accepts JSON POST requests.</p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Watching</h4>
-                <p class="text-base text">Click <strong>Watch</strong> on a card to receive notifications when someone comments or updates it. You automatically watch cards you create or comment on.</p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Time Tracking</h4>
-                <p class="text-base text">Open the time section from the stopwatch button on a card. Pick the date first, then the start and end times. An end time earlier than the start time counts on the next day: <strong>23:00 → 01:00</strong> is 2h, and the entry shows <strong>+1d</strong>.</p>
-                <p class="text-base text">Leave the end time empty to keep the timer running, then press <strong>End</strong> when you stop. The form stays open after you save, and the pencil icon on any entry lets you change its date, times, or note.</p>
-                <p class="text-base text">Moving a card to another column stops its running timer automatically.</p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Notification Preferences</h4>
-                <p class="text-base text">Go to <strong>Account</strong> to configure your notification email and choose between immediate delivery or a daily summary.</p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Keyboard Shortcuts</h4>
-                <table class="help-table">
-                    <tr><td><kbd>⌘</kbd> <kbd>K</kbd></td><td>Search cards</td></tr>
-                    <tr><td><kbd>⌘</kbd> <kbd>S</kbd></td><td>Save (in any form)</td></tr>
-                    <tr><td><kbd>N</kbd></td><td>Add card to first column</td></tr>
-                    <tr><td><kbd>W</kbd></td><td>Watch/unwatch card or project</td></tr>
-                    <tr><td><kbd>⌘</kbd> <kbd>,</kbd></td><td>Project settings</td></tr>
-                    <tr><td><kbd>A</kbd></td><td>Account</td></tr>
-                    <tr><td><kbd>T</kbd></td><td>Team</td></tr>
-                    <tr><td><kbd>⌘</kbd> <kbd>G</kbd></td><td>App settings</td></tr>
-                    <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
-                    <tr><td><kbd>1</kbd> – <kbd>9</kbd></td><td>Open project by index (on project list)</td></tr>
-                    <tr><td><kbd>Backspace</kbd></td><td>Back to project list (from board)</td></tr>
-                    <tr><td><kbd>Esc</kbd></td><td>Cancel / close modal / clear search</td></tr>
-                </table>
-                <p class="text-sm text-light mt-2">On Windows/Linux, use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.</p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Recovery Key</h4>
-                <p class="text-base text">On first login, a recovery key is generated and shown once. Save it securely — it can replace your password if you forget it. After use, the key is rotated and you receive a new one. You can also regenerate it from <strong>Account &gt; Recovery Key</strong>.</p>
-            </div>
-            <div class="card-detail-section">
-                <h4>Version</h4>
-                <p class="text-base text-light">#<?= APP_VERSION ?></p>
-            </div>
-        `, '');
+                    # Daily digest(once a day at 8 AM) 0 8 * * * curl - s "${baseUrl}?action=send_digest&cron_token=YOUR_TOKEN" > /dev/null < /pre> <
+                    p class = "text-sm text-light mt-2" > Generate a cron token in < strong > App Settings & gt; Cron Token < /strong>. The token authenticates the request without a browser session.</p >
+                    <
+                    p class = "text-sm text-light mt-2" > < strong > send_notifications < /strong> — sends individual emails to users with "Immediate" delivery preference.<br><strong>send_digest</strong > —sends a batched summary to users with "Daily summary"
+                    preference and to guest watchers. < /p> <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Webhooks < /h4> <
+                    p class = "text-base text mb-2" > Configure webhooks in < strong > Project Settings < /strong> to receive real-time notifications for:</p >
+                    <
+                    ul class = "text-base text pl-5 mb-0" >
+                    <
+                    li > New cards created < /li> <
+                    li > Comments posted < /li> <
+                    li > Cards updated < /li> <
+                    li > New projects created < /li> <
+                    /ul> <
+                    p class = "text-sm text-light mt-2" > Supported integrations: Slack(Incoming Webhooks), Telegram(Bot API), or any HTTP endpoint that accepts JSON POST requests. < /p> <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Watching < /h4> <
+                    p class = "text-base text" > Click < strong > Watch < /strong> on a card to receive notifications when someone comments or updates it. You automatically watch cards you create or comment on.</p >
+                    <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Time Tracking < /h4> <
+                    p class = "text-base text" > Open the time section from the stopwatch button on a card.Pick the date first, then the start and end times.An end time earlier than the start time counts on the next day: < strong > 23: 00→ 01: 00 < /strong> is 2h, and the entry shows <strong>+1d</strong > . < /p> <
+                    p class = "text-base text" > Leave the end time empty to keep the timer running, then press < strong > End < /strong> when you stop. The form stays open after you save, and the pencil icon on any entry lets you change its date, times, or note.</p >
+                    <
+                    p class = "text-base text" > Moving a card to another column stops its running timer automatically. < /p> <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Notification Preferences < /h4> <
+                    p class = "text-base text" > Go to < strong > Account < /strong> to configure your notification email and choose between immediate delivery or a daily summary.</p >
+                    <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Keyboard Shortcuts < /h4> <
+                    table class = "help-table" >
+                    <
+                    tr > < td > < kbd > ⌘ < /kbd> <kbd>K</kbd > < /td><td>Search cards</td > < /tr> <
+                    tr > < td > < kbd > ⌘ < /kbd> <kbd>S</kbd > < /td><td>Save (in any form)</td > < /tr> <
+                    tr > < td > < kbd > N < /kbd></td > < td > Add card to first column < /td></tr >
+                    <
+                    tr > < td > < kbd > W < /kbd></td > < td > Watch / unwatch card or project < /td></tr >
+                    <
+                    tr > < td > < kbd > ⌘ < /kbd> <kbd>,</kbd > < /td><td>Project settings</td > < /tr> <
+                    tr > < td > < kbd > A < /kbd></td > < td > Account < /td></tr >
+                    <
+                    tr > < td > < kbd > T < /kbd></td > < td > Team < /td></tr >
+                    <
+                    tr > < td > < kbd > ⌘ < /kbd> <kbd>G</kbd > < /td><td>App settings</td > < /tr> <
+                    tr > < td > < kbd > ? < /kbd></td > < td > Show this help < /td></tr >
+                    <
+                    tr > < td > < kbd > 1 < /kbd> – <kbd>9</kbd > < /td><td>Open project by index (on project list)</td > < /tr> <
+                    tr > < td > < kbd > Backspace < /kbd></td > < td > Back to project list(from board) < /td></tr >
+                    <
+                    tr > < td > < kbd > Esc < /kbd></td > < td > Cancel / close modal / clear search < /td></tr >
+                    <
+                    /table> <
+                    p class = "text-sm text-light mt-2" > On Windows / Linux, use < kbd > Ctrl < /kbd> instead of <kbd>⌘</kbd > . < /p> <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Recovery Key < /h4> <
+                    p class = "text-base text" > On first login, a recovery key is generated and shown once.Save it securely— it can replace your password
+                    if you forget it.After use, the key is rotated and you receive a new one.You can also regenerate it from < strong > Account & gt; Recovery Key < /strong>.</p >
+                    <
+                    /div> <
+                    div class = "card-detail-section" >
+                    <
+                    h4 > Version < /h4> <
+                    p class = "text-base text-light" > #<?= APP_VERSION ?> < /p> <
+                    /div>
+                    `, '');
     },
 
     watchCard(cardId) {
@@ -9821,8 +10030,23 @@ $isGuestRequest = isset($_GET['guest']);
             const count = watchers.length;
             this._projectWatching = watching;
             $('#project-watch-btn').html(watching
-                ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span class="watch-label">Watching (${count})</span>`
-                : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span class="watch-label">Watch (${count})</span>`);
+                ? ` < svg viewBox = "0 0 24 24"
+                    width = "14"
+                    height = "14"
+                    stroke = "currentColor"
+                    fill = "currentColor"
+                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
+                    cy = "12"
+                    r = "3"
+                    fill = "var(--surface)" / > < /svg> <span class="watch-label">Watching (${count})</span > `
+                : ` < svg viewBox = "0 0 24 24"
+                    width = "14"
+                    height = "14"
+                    stroke = "currentColor"
+                    fill = "none"
+                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
+                    cy = "12"
+                    r = "3" / > < /svg> <span class="watch-label">Watch (${count})</span > `);
         });
     },
     watchProject() {
@@ -9854,8 +10078,23 @@ $isGuestRequest = isset($_GET['guest']);
     updateGuestWatchBtn() {
         const count = this._guestWatchCount || 0;
         $('#guest-watch-btn').html(this._guestWatching
-            ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span class="watch-label">Watching (${count})</span>`
-            : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span class="watch-label">Watch (${count})</span>`);
+            ? ` < svg viewBox = "0 0 24 24"
+                    width = "14"
+                    height = "14"
+                    stroke = "currentColor"
+                    fill = "currentColor"
+                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
+                    cy = "12"
+                    r = "3"
+                    fill = "var(--surface)" / > < /svg> <span class="watch-label">Watching (${count})</span > `
+            : ` < svg viewBox = "0 0 24 24"
+                    width = "14"
+                    height = "14"
+                    stroke = "currentColor"
+                    fill = "none"
+                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
+                    cy = "12"
+                    r = "3" / > < /svg> <span class="watch-label">Watch (${count})</span > `);
     },
     guestWatchProject() {
         this.api('guest_watch', { project_id: this.currentProject.id }, 'POST').done(() => {
@@ -9911,71 +10150,80 @@ $isGuestRequest = isset($_GET['guest']);
         $('#view-login, #view-board, #view-setup').addClass('hidden');
         $('#view-projects').removeClass('hidden');
         $('#breadcrumb').empty();
-        $('#navbar-actions').html(`<div id="user-menu-slot">${this.renderUserMenu()}</div>`);
-        $('#guest-banner').addClass('hidden');
-        this.loadProjects();
-    },
+        $('#navbar-actions').html(` < div id = "user-menu-slot" > $ {
+                      this.renderUserMenu()
+                    } < /div>`);
+                    $('#guest-banner').addClass('hidden'); this.loadProjects();
+                  },
 
-    refreshBoard(callback) {
-        if (this.currentProject) {
-            this.api('list_columns', { project_id: this.currentProject.id }).done(cols => { this.columns = cols; this.loadBoard(this.currentProject.id, callback); });
-        }
-    },
+                  refreshBoard(callback) {
+                    if (this.currentProject) {
+                      this.api('list_columns', {
+                        project_id: this.currentProject.id
+                      }).done(cols => {
+                        this.columns = cols;
+                        this.loadBoard(this.currentProject.id, callback);
+                      });
+                    }
+                  },
 
-    refetchActiveView() {
-        if (document.visibilityState === 'hidden') return;
-        if (this._activeRequests > 0) return;
-        if ($('#modal-overlay').hasClass('active')) return;
-        if (this._openCardId) return;
-        if ($(document.activeElement).is('input, textarea, select, [contenteditable="true"]')) return;
-        if (!$('#view-board').hasClass('hidden') && this.currentProject) {
-            this.refreshBoard();
-        } else if (!$('#view-projects').hasClass('hidden')) {
-            this.loadProjects();
-        }
-    },
+                  refetchActiveView() {
+                    if (document.visibilityState === 'hidden') return;
+                    if (this._activeRequests > 0) return;
+                    if ($('#modal-overlay').hasClass('active')) return;
+                    if (this._openCardId) return;
+                    if ($(document.activeElement).is('input, textarea, select, [contenteditable="true"]')) return;
+                    if (!$('#view-board').hasClass('hidden') && this.currentProject) {
+                      this.refreshBoard();
+                    } else if (!$('#view-projects').hasClass('hidden')) {
+                      this.loadProjects();
+                    }
+                  },
 
-    // MODAL
-    openModal(title, body, footer) {
-        $('#modal-title').html(title);
-        $('#modal-body .modal-body-scroll').html(body).scrollTop(0);
-        $('#modal-footer').html(footer || '');
-        $('#modal-overlay').addClass('active');
-    },
+                  // MODAL
+                  openModal(title, body, footer) {
+                    $('#modal-title').html(title);
+                    $('#modal-body .modal-body-scroll').html(body).scrollTop(0);
+                    $('#modal-footer').html(footer || '');
+                    $('#modal-overlay').addClass('active');
+                  },
 
-    closeModal(event) {
-        if (event && event.target !== event.currentTarget) return;
-        if ($('#rk-saved-check').length && !$('#rk-saved-check').is(':checked')) return;
-        $('#modal-overlay').removeClass('active');
-        $('.modal').removeClass('modal-wide');
-        this._quill = null;
-        this._quillComment = null;
-        this._settingsTab = null;
-        if (this._openCardId && this.currentProject) {
-            this._navigating = true;
-            history.replaceState(null, '', `#project/${this.currentProject.id}`);
-            this._navigating = false;
-        }
-        this._openCardId = null;
-    },
+                  closeModal(event) {
+                    if (event && event.target !== event.currentTarget) return;
+                    if ($('#rk-saved-check').length && !$('#rk-saved-check').is(':checked')) return;
+                    $('#modal-overlay').removeClass('active');
+                    $('.modal').removeClass('modal-wide');
+                    this._quill = null;
+                    this._quillComment = null;
+                    this._settingsTab = null;
+                    if (this._openCardId && this.currentProject) {
+                      this._navigating = true;
+                      history.replaceState(null, '', `#project/${this.currentProject.id}`);
+                      this._navigating = false;
+                    }
+                    this._openCardId = null;
+                  },
 
-    // LIGHTBOX
-    previewImage(src) {
-        const overlay = document.createElement('div');
-        overlay.className = 'lightbox';
-        overlay.innerHTML = `<img src="${src}"><span class="lightbox-close">&times;</span>`;
-        overlay.onclick = () => overlay.remove();
-        document.body.appendChild(overlay);
-    },
+                  // LIGHTBOX
+                  previewImage(src) {
+                    const overlay = document.createElement('div');
+                    overlay.className = 'lightbox';
+                    overlay.innerHTML = `<img src="${src}"><span class="lightbox-close">&times;</span>`;
+                    overlay.onclick = () => overlay.remove();
+                    document.body.appendChild(overlay);
+                  },
 
-    // INLINE DIALOGS
-    confirmAction(message, onConfirm) {
-        this.openModal('Confirm', `<p class="text-lg">${message}</p>`, `
+                  // INLINE DIALOGS
+                  confirmAction(message, onConfirm) {
+                    this.openModal('Confirm', `<p class="text-lg">${message}</p>`, `
             <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
             <button class="btn btn-danger" id="confirm-action-btn">Confirm</button>
         `);
-        setTimeout(() => $('#confirm-action-btn').off('click').on('click', () => { App.closeModal(); onConfirm(); }), 50);
-    },
+                    setTimeout(() => $('#confirm-action-btn').off('click').on('click', () => {
+                      App.closeModal();
+                      onConfirm();
+                    }), 50);
+                  },
 
                   promptInput(title, label, currentValue, onSave) {
                     this.openModal(title, `

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Tasssks API Test Suite
  * Run: php tests.php
@@ -23,126 +24,144 @@ $cookieFile = tempnam(sys_get_temp_dir(), 'kanban_test_');
 
 // Start a dedicated test server
 $serverCmd = sprintf(
-    'TASSSKS_DB_FILE=%s TASSSKS_UPLOAD_DIR=%s php -S localhost:%d -t %s %s/index.php',
-    escapeshellarg($TEST_DB),
-    escapeshellarg($TEST_UPLOAD_DIR),
-    $TEST_PORT,
-    escapeshellarg(__DIR__),
-    escapeshellarg(__DIR__)
+  'TASSSKS_DB_FILE=%s TASSSKS_UPLOAD_DIR=%s php -S localhost:%d -t %s %s/index.php',
+  escapeshellarg($TEST_DB),
+  escapeshellarg($TEST_UPLOAD_DIR),
+  $TEST_PORT,
+  escapeshellarg(__DIR__),
+  escapeshellarg(__DIR__)
 );
 $serverProc = proc_open($serverCmd, [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes);
 if (!$serverProc) {
-    echo "Failed to start test server.\n";
-    exit(1);
+  echo "Failed to start test server.\n";
+  exit(1);
 }
 // Wait for server to be ready
 $ready = false;
 for ($i = 0; $i < 50; $i++) {
-    $sock = @fsockopen('localhost', $TEST_PORT, $errno, $errstr, 0.1);
-    if ($sock) { fclose($sock); $ready = true; break; }
-    usleep(100_000);
+  $sock = @fsockopen('localhost', $TEST_PORT, $errno, $errstr, 0.1);
+  if ($sock) {
+    fclose($sock);
+    $ready = true;
+    break;
+  }
+  usleep(100_000);
 }
 if (!$ready) {
-    echo "Test server failed to start on port $TEST_PORT.\n";
-    proc_terminate($serverProc);
-    exit(1);
+  echo "Test server failed to start on port $TEST_PORT.\n";
+  proc_terminate($serverProc);
+  exit(1);
 }
 
-function colorGreen(string $s): string { return "\033[32m" . $s . "\033[0m"; }
-function colorRed(string $s): string { return "\033[31m" . $s . "\033[0m"; }
-function colorBold(string $s): string { return "\033[1m" . $s . "\033[0m"; }
-
-function req(string $action, array $data = [], string $method = 'GET', string $csrf = '', string $cookie = ''): array {
-    global $BASE, $cookieFile;
-    $url = "$BASE/?action=$action";
-    $ch = curl_init();
-
-    if ($method === 'GET' && $data) {
-        $url .= '&' . http_build_query($data);
-    }
-
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HEADER => true,
-        CURLOPT_COOKIEFILE => $cookie ?: $cookieFile,
-        CURLOPT_COOKIEJAR => $cookie ?: $cookieFile,
-    ]);
-
-    if ($method === 'POST') {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        $headers = ['Content-Type: application/json'];
-        if ($csrf) $headers[] = "X-CSRF-Token: $csrf";
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    }
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-    $body = substr($response, $headerSize);
-    curl_close($ch);
-
-    return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
+function colorGreen(string $s): string
+{
+  return "\033[32m" . $s . "\033[0m";
+}
+function colorRed(string $s): string
+{
+  return "\033[31m" . $s . "\033[0m";
+}
+function colorBold(string $s): string
+{
+  return "\033[1m" . $s . "\033[0m";
 }
 
-function reqUpload(string $action, string $filePath, int $cardId, string $csrf = '', string $cookie = ''): array {
-    global $BASE, $cookieFile;
-    $url = "$BASE/?action=$action";
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HEADER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => [
-            'file' => new CURLFile($filePath, 'text/plain', basename($filePath)),
-            'card_id' => $cardId,
-        ],
-        CURLOPT_COOKIEFILE => $cookie ?: $cookieFile,
-        CURLOPT_COOKIEJAR => $cookie ?: $cookieFile,
-    ]);
-    $headers = [];
+function req(string $action, array $data = [], string $method = 'GET', string $csrf = '', string $cookie = ''): array
+{
+  global $BASE, $cookieFile;
+  $url = "$BASE/?action=$action";
+  $ch = curl_init();
+
+  if ($method === 'GET' && $data) {
+    $url .= '&' . http_build_query($data);
+  }
+
+  curl_setopt_array($ch, [
+    CURLOPT_URL => $url,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => true,
+    CURLOPT_COOKIEFILE => $cookie ?: $cookieFile,
+    CURLOPT_COOKIEJAR => $cookie ?: $cookieFile,
+  ]);
+
+  if ($method === 'POST') {
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    $headers = ['Content-Type: application/json'];
     if ($csrf) $headers[] = "X-CSRF-Token: $csrf";
-    if ($headers) curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+  }
 
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-    $body = substr($response, $headerSize);
-    curl_close($ch);
+  $response = curl_exec($ch);
+  $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+  $body = substr($response, $headerSize);
+  curl_close($ch);
 
-    return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
+  return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
 }
 
-function assert_eq($expected, $actual, string $msg): void {
-    global $passed, $failed;
-    if ($expected === $actual) {
-        $passed++;
-        echo '  ' . colorGreen('PASS') . ' ' . $msg . "\n";
-    } else {
-        $failed++;
-        echo '  ' . colorRed('FAIL') . ' ' . $msg . "\n";
-        echo '    ' . colorRed('expected: ' . var_export($expected, true)) . "\n";
-        echo '    ' . colorRed('actual:   ' . var_export($actual, true)) . "\n";
-    }
+function reqUpload(string $action, string $filePath, int $cardId, string $csrf = '', string $cookie = ''): array
+{
+  global $BASE, $cookieFile;
+  $url = "$BASE/?action=$action";
+  $ch = curl_init();
+  curl_setopt_array($ch, [
+    CURLOPT_URL => $url,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => true,
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => [
+      'file' => new CURLFile($filePath, 'text/plain', basename($filePath)),
+      'card_id' => $cardId,
+    ],
+    CURLOPT_COOKIEFILE => $cookie ?: $cookieFile,
+    CURLOPT_COOKIEJAR => $cookie ?: $cookieFile,
+  ]);
+  $headers = [];
+  if ($csrf) $headers[] = "X-CSRF-Token: $csrf";
+  if ($headers) curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+  $response = curl_exec($ch);
+  $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+  $body = substr($response, $headerSize);
+  curl_close($ch);
+
+  return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
 }
 
-function assert_true($val, string $msg): void {
-    global $passed, $failed;
-    if ((bool)$val) {
-        $passed++;
-        echo '  ' . colorGreen('PASS') . ' ' . $msg . "\n";
-    } else {
-        $failed++;
-        echo '  ' . colorRed('FAIL') . ' ' . $msg . "\n";
-        echo '    ' . colorRed('expected: true') . "\n";
-        echo '    ' . colorRed('actual:   false') . "\n";
-    }
+function assert_eq($expected, $actual, string $msg): void
+{
+  global $passed, $failed;
+  if ($expected === $actual) {
+    $passed++;
+    echo '  ' . colorGreen('PASS') . ' ' . $msg . "\n";
+  } else {
+    $failed++;
+    echo '  ' . colorRed('FAIL') . ' ' . $msg . "\n";
+    echo '    ' . colorRed('expected: ' . var_export($expected, true)) . "\n";
+    echo '    ' . colorRed('actual:   ' . var_export($actual, true)) . "\n";
+  }
 }
 
-function section(string $name): void {
-    echo "\n" . colorBold('=== ' . $name . ' ===') . "\n";
+function assert_true($val, string $msg): void
+{
+  global $passed, $failed;
+  if ((bool)$val) {
+    $passed++;
+    echo '  ' . colorGreen('PASS') . ' ' . $msg . "\n";
+  } else {
+    $failed++;
+    echo '  ' . colorRed('FAIL') . ' ' . $msg . "\n";
+    echo '    ' . colorRed('expected: true') . "\n";
+    echo '    ' . colorRed('actual:   false') . "\n";
+  }
+}
+
+function section(string $name): void
+{
+  echo "\n" . colorBold('=== ' . $name . ' ===') . "\n";
 }
 
 echo "Tasssks Test Suite\n";
@@ -186,8 +205,9 @@ chmod($noWriteDir, 0000);
 $noWriteDb = $noWriteDir . '/test.sqlite';
 $noWritePort = $TEST_PORT + 2;
 $noWriteProc = proc_open(
-    sprintf('TASSSKS_DB_FILE=%s php -S localhost:%d -t %s %s/index.php', escapeshellarg($noWriteDb), $noWritePort, escapeshellarg(__DIR__), escapeshellarg(__DIR__)),
-    [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $noWritePipes
+  sprintf('TASSSKS_DB_FILE=%s php -S localhost:%d -t %s %s/index.php', escapeshellarg($noWriteDb), $noWritePort, escapeshellarg(__DIR__), escapeshellarg(__DIR__)),
+  [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']],
+  $noWritePipes
 );
 usleep(500000);
 $ch = curl_init("http://localhost:$noWritePort/?action=ping");
@@ -550,7 +570,12 @@ assert_true(count($r['body']) < 2, 'comment was deleted');
 $r = req('list_cards', ['project_id' => $adminProjectId]);
 assert_eq(200, $r['status'], 'list_cards for comment_count check');
 $commentCard = null;
-foreach ($r['body'] as $c) { if ($c['id'] == $commentCardId) { $commentCard = $c; break; } }
+foreach ($r['body'] as $c) {
+  if ($c['id'] == $commentCardId) {
+    $commentCard = $c;
+    break;
+  }
+}
 assert_true($commentCard !== null, 'comment card found in list_cards');
 assert_true(array_key_exists('comment_count', $commentCard), 'list_cards returns comment_count field');
 assert_eq(1, (int) $commentCard['comment_count'], 'comment_count reflects remaining comments');
@@ -636,11 +661,11 @@ assert_eq('guest@test.com', $emailGuest['email'] ?? '', 'guest email is stored')
 $guestWatchCookie = tempnam(sys_get_temp_dir(), 'kanban_gw_');
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=auth_status&guest=$emailGuestToken",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $guestWatchCookie,
-    CURLOPT_COOKIEJAR => $guestWatchCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=auth_status&guest=$emailGuestToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $guestWatchCookie,
+  CURLOPT_COOKIEJAR => $guestWatchCookie,
 ]);
 $response = curl_exec($ch);
 $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
@@ -650,14 +675,14 @@ $guestWatchCsrf = $gwAuth['csrf_token'] ?? '';
 
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=guest_watch&guest=$emailGuestToken",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['project_id' => $adminProjectId]),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestWatchCsrf"],
-    CURLOPT_COOKIEFILE => $guestWatchCookie,
-    CURLOPT_COOKIEJAR => $guestWatchCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=guest_watch&guest=$emailGuestToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['project_id' => $adminProjectId]),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestWatchCsrf"],
+  CURLOPT_COOKIEFILE => $guestWatchCookie,
+  CURLOPT_COOKIEJAR => $guestWatchCookie,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -670,14 +695,14 @@ $noEmailGuestToken = $r['body']['token'];
 
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=guest_watch&guest=$noEmailGuestToken",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['project_id' => $adminProjectId]),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestWatchCsrf"],
-    CURLOPT_COOKIEFILE => $guestWatchCookie,
-    CURLOPT_COOKIEJAR => $guestWatchCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=guest_watch&guest=$noEmailGuestToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['project_id' => $adminProjectId]),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestWatchCsrf"],
+  CURLOPT_COOKIEFILE => $guestWatchCookie,
+  CURLOPT_COOKIEJAR => $guestWatchCookie,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -687,14 +712,14 @@ assert_eq(403, $httpCode, 'guest without email cannot watch');
 // Guest can unwatch
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=guest_unwatch&guest=$emailGuestToken",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['project_id' => $adminProjectId]),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestWatchCsrf"],
-    CURLOPT_COOKIEFILE => $guestWatchCookie,
-    CURLOPT_COOKIEJAR => $guestWatchCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=guest_unwatch&guest=$emailGuestToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['project_id' => $adminProjectId]),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestWatchCsrf"],
+  CURLOPT_COOKIEFILE => $guestWatchCookie,
+  CURLOPT_COOKIEJAR => $guestWatchCookie,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -718,7 +743,8 @@ $r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => 'not-a-url
 assert_eq(400, $r['status'], 'invalid URL rejected');
 
 // SSRF protection: no loopback, private, file, gopher, or dict URLs.
-foreach ([
+foreach (
+  [
     'http://127.0.0.1/hook',
     'http://localhost/hook',
     'http://169.254.169.254/latest/meta-data/',
@@ -727,9 +753,10 @@ foreach ([
     'file:///etc/passwd',
     'gopher://127.0.0.1:6379/_PING',
     'dict://127.0.0.1:11211/stat',
-] as $unsafeUrl) {
-    $r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => $unsafeUrl, 'type' => 'generic'], 'POST', $adminCsrf);
-    assert_eq(400, $r['status'], "unsafe webhook URL rejected: $unsafeUrl");
+  ] as $unsafeUrl
+) {
+  $r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => $unsafeUrl, 'type' => 'generic'], 'POST', $adminCsrf);
+  assert_eq(400, $r['status'], "unsafe webhook URL rejected: $unsafeUrl");
 }
 
 $r = req('update_webhook', ['id' => $webhookId, 'url' => 'file:///etc/passwd'], 'POST', $adminCsrf);
@@ -769,11 +796,11 @@ assert_eq(403, $r['status'], 'member cannot add webhook to admin project');
 
 // Webhook UX: create with Telegram fields, update, test
 $r = req('create_webhook', [
-    'project_id' => $adminProjectId,
-    'type' => 'telegram',
-    'bot_token' => '123456:ABC-DEF',
-    'chat_id' => '-1001234567890',
-    'message_template' => '*{{event}}*: {{project}}',
+  'project_id' => $adminProjectId,
+  'type' => 'telegram',
+  'bot_token' => '123456:ABC-DEF',
+  'chat_id' => '-1001234567890',
+  'message_template' => '*{{event}}*: {{project}}',
 ], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'create telegram webhook with bot_token and chat_id');
 $telegramHookId = $r['body']['id'];
@@ -785,8 +812,8 @@ assert_eq('123456:ABC-DEF', $r['body'][0]['bot_token'], 'bot_token stored');
 assert_eq('-1001234567890', $r['body'][0]['chat_id'], 'chat_id stored');
 
 $r = req('update_webhook', [
-    'id' => $telegramHookId,
-    'message_template' => '{{event}} in {{project}}',
+  'id' => $telegramHookId,
+  'message_template' => '{{event}} in {{project}}',
 ], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'update webhook message_template');
 
@@ -800,10 +827,10 @@ $r = req('delete_webhook', ['id' => $telegramHookId], 'POST', $adminCsrf);
 
 // Create webhook with message_template (Slack)
 $r = req('create_webhook', [
-    'project_id' => $adminProjectId,
-    'url' => 'https://1.1.1.1/hook',
-    'type' => 'slack',
-    'message_template' => '*{{event}}*: {{project}}',
+  'project_id' => $adminProjectId,
+  'url' => 'https://1.1.1.1/hook',
+  'type' => 'slack',
+  'message_template' => '*{{event}}*: {{project}}',
 ], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'create slack webhook with message_template');
 $slackHookId = $r['body']['id'];
@@ -875,11 +902,11 @@ $guestCookie2 = tempnam(sys_get_temp_dir(), 'kanban_g2_');
 // Get guest CSRF token by hitting auth_status to establish session
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=auth_status&guest=$guestToken",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $guestCookie2,
-    CURLOPT_COOKIEJAR => $guestCookie2,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=auth_status&guest=$guestToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $guestCookie2,
+  CURLOPT_COOKIEJAR => $guestCookie2,
 ]);
 $response = curl_exec($ch);
 $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
@@ -890,14 +917,14 @@ $guestCsrf = $guestAuthBody['csrf_token'] ?? '';
 $guestUrl = "http://localhost:$TEST_PORT/?action=create_card&guest=$guestToken";
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => $guestUrl,
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['column_id' => $colId, 'title' => 'Guest card']),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestCsrf"],
-    CURLOPT_COOKIEFILE => $guestCookie2,
-    CURLOPT_COOKIEJAR => $guestCookie2,
+  CURLOPT_URL => $guestUrl,
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['column_id' => $colId, 'title' => 'Guest card']),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestCsrf"],
+  CURLOPT_COOKIEFILE => $guestCookie2,
+  CURLOPT_COOKIEJAR => $guestCookie2,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -913,14 +940,14 @@ $r = req('list_columns', ['project_id' => $adminProjectId]);
 $secondColId = $r['body'][1]['id'] ?? 0;
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=create_card&guest=$guestToken",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['column_id' => $secondColId, 'title' => 'Bad card']),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestCsrf"],
-    CURLOPT_COOKIEFILE => $guestCookie2,
-    CURLOPT_COOKIEJAR => $guestCookie2,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=create_card&guest=$guestToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['column_id' => $secondColId, 'title' => 'Bad card']),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $guestCsrf"],
+  CURLOPT_COOKIEFILE => $guestCookie2,
+  CURLOPT_COOKIEJAR => $guestCookie2,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -952,13 +979,13 @@ assert_eq('', $r['body']['smtp_host'] ?? '', 'SMTP host empty by default');
 assert_eq('', $r['body']['smtp_from_email'] ?? '', 'SMTP from_email empty by default');
 
 $r = req('update_smtp_settings', [
-    'smtp_host' => 'smtp.example.com',
-    'smtp_port' => 587,
-    'smtp_user' => 'user@example.com',
-    'smtp_pass' => 'secret123',
-    'smtp_from_email' => 'noreply@example.com',
-    'smtp_from_name' => 'Tasssks',
-    'smtp_encryption' => 'tls',
+  'smtp_host' => 'smtp.example.com',
+  'smtp_port' => 587,
+  'smtp_user' => 'user@example.com',
+  'smtp_pass' => 'secret123',
+  'smtp_from_email' => 'noreply@example.com',
+  'smtp_from_name' => 'Tasssks',
+  'smtp_encryption' => 'tls',
 ], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'admin can save SMTP settings');
 
@@ -1039,11 +1066,11 @@ assert_true(!empty($r['body']['last_digest_at']), 'last_digest_at set after dige
 $noAuthCookie = tempnam(sys_get_temp_dir(), 'kanban_noauth_');
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=send_digest",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $noAuthCookie,
-    CURLOPT_COOKIEJAR => $noAuthCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=send_digest",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $noAuthCookie,
+  CURLOPT_COOKIEJAR => $noAuthCookie,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1061,11 +1088,11 @@ assert_true(strlen($cronToken) >= 16, 'cron token is long enough');
 $anonCookie = tempnam(sys_get_temp_dir(), 'kanban_anon_');
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=send_digest&cron_token=$cronToken",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $anonCookie,
-    CURLOPT_COOKIEJAR => $anonCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=send_digest&cron_token=$cronToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $anonCookie,
+  CURLOPT_COOKIEJAR => $anonCookie,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1078,11 +1105,11 @@ assert_true(isset($digestBody['processed']), 'cron token digest returns processe
 // Invalid cron token
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=send_digest&cron_token=invalid",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $anonCookie,
-    CURLOPT_COOKIEJAR => $anonCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=send_digest&cron_token=invalid",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $anonCookie,
+  CURLOPT_COOKIEJAR => $anonCookie,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1106,9 +1133,11 @@ assert_eq(true, (bool)$proj['is_watching'], 'admin is watching the project');
 $gwCookie = tempnam(sys_get_temp_dir(), 'kanban_gwc_');
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=auth_status&guest=$emailGuestToken",
-    CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $gwCookie, CURLOPT_COOKIEJAR => $gwCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=auth_status&guest=$emailGuestToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $gwCookie,
+  CURLOPT_COOKIEJAR => $gwCookie,
 ]);
 $resp = curl_exec($ch);
 $hs = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
@@ -1117,13 +1146,17 @@ curl_close($ch);
 
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "http://localhost:$TEST_PORT/?action=guest_watch&guest=$emailGuestToken",
-    CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['project_id' => $adminProjectId]),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $gwCsrf"],
-    CURLOPT_COOKIEFILE => $gwCookie, CURLOPT_COOKIEJAR => $gwCookie,
+  CURLOPT_URL => "http://localhost:$TEST_PORT/?action=guest_watch&guest=$emailGuestToken",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['project_id' => $adminProjectId]),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $gwCsrf"],
+  CURLOPT_COOKIEFILE => $gwCookie,
+  CURLOPT_COOKIEJAR => $gwCookie,
 ]);
-curl_exec($ch); curl_close($ch);
+curl_exec($ch);
+curl_close($ch);
 @unlink($gwCookie);
 
 // list_watchers includes both users and guests
@@ -1162,10 +1195,10 @@ section('Security Headers');
 
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_NOBODY => true,
+  CURLOPT_URL => "$BASE/",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_NOBODY => true,
 ]);
 $headResponse = curl_exec($ch);
 curl_close($ch);
@@ -1184,22 +1217,30 @@ assert_true(stripos($headResponse, 'SameSite=Strict') !== false, 'Session cookie
 section('Sensitive File Blocking');
 
 $sensitiveFiles = [
-    'tasssks.sqlite', 'test.sqlite', 'data.db',
-    'tasssks.sqlite-wal', 'tasssks.sqlite-shm', 'tasssks.sqlite-journal',
-    'test.sqlite-wal', 'test.sqlite-shm',
-    '.env', '.git/config', 'index.php.bak', 'tests.php',
+  'tasssks.sqlite',
+  'test.sqlite',
+  'data.db',
+  'tasssks.sqlite-wal',
+  'tasssks.sqlite-shm',
+  'tasssks.sqlite-journal',
+  'test.sqlite-wal',
+  'test.sqlite-shm',
+  '.env',
+  '.git/config',
+  'index.php.bak',
+  'tests.php',
 ];
 foreach ($sensitiveFiles as $f) {
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => "$BASE/$f",
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HEADER => false,
-    ]);
-    curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    assert_eq(403, $code, "access to $f blocked");
+  $ch = curl_init();
+  curl_setopt_array($ch, [
+    CURLOPT_URL => "$BASE/$f",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => false,
+  ]);
+  curl_exec($ch);
+  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  curl_close($ch);
+  assert_eq(403, $code, "access to $f blocked");
 }
 
 // ─── RECOVERY KEY ───────────────────────────────────────────
@@ -1320,11 +1361,11 @@ section('Rate Limit');
 $rateCookie = tempnam(sys_get_temp_dir(), 'kanban_rate_');
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/?action=auth_status",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $rateCookie,
-    CURLOPT_COOKIEJAR => $rateCookie,
+  CURLOPT_URL => "$BASE/?action=auth_status",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $rateCookie,
+  CURLOPT_COOKIEJAR => $rateCookie,
 ]);
 $resp = curl_exec($ch);
 $hs = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
@@ -1332,23 +1373,8 @@ $rateCsrf = (json_decode(substr($resp, $hs), true))['csrf_token'] ?? '';
 curl_close($ch);
 
 for ($i = 0; $i < 16; $i++) {
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => "$BASE/?action=auth_login",
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HEADER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode(['email' => 'rate@test.com', 'password' => 'wrong']),
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $rateCsrf"],
-        CURLOPT_COOKIEFILE => $rateCookie,
-        CURLOPT_COOKIEJAR => $rateCookie,
-    ]);
-    curl_exec($ch);
-    curl_close($ch);
-}
-
-$ch = curl_init();
-curl_setopt_array($ch, [
+  $ch = curl_init();
+  curl_setopt_array($ch, [
     CURLOPT_URL => "$BASE/?action=auth_login",
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_HEADER => true,
@@ -1357,6 +1383,21 @@ curl_setopt_array($ch, [
     CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $rateCsrf"],
     CURLOPT_COOKIEFILE => $rateCookie,
     CURLOPT_COOKIEJAR => $rateCookie,
+  ]);
+  curl_exec($ch);
+  curl_close($ch);
+}
+
+$ch = curl_init();
+curl_setopt_array($ch, [
+  CURLOPT_URL => "$BASE/?action=auth_login",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['email' => 'rate@test.com', 'password' => 'wrong']),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $rateCsrf"],
+  CURLOPT_COOKIEFILE => $rateCookie,
+  CURLOPT_COOKIEJAR => $rateCookie,
 ]);
 $resp = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1366,14 +1407,14 @@ assert_eq(429, $httpCode, 'rate limit enforced after 15 attempts');
 // X-Forwarded-For should NOT bypass rate limit
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/?action=auth_login",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['email' => 'rate@test.com', 'password' => 'wrong']),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $rateCsrf", 'X-Forwarded-For: 10.0.0.99'],
-    CURLOPT_COOKIEFILE => $rateCookie,
-    CURLOPT_COOKIEJAR => $rateCookie,
+  CURLOPT_URL => "$BASE/?action=auth_login",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['email' => 'rate@test.com', 'password' => 'wrong']),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', "X-CSRF-Token: $rateCsrf", 'X-Forwarded-For: 10.0.0.99'],
+  CURLOPT_COOKIEFILE => $rateCookie,
+  CURLOPT_COOKIEJAR => $rateCookie,
 ]);
 $resp = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1412,14 +1453,14 @@ section('CSRF Protection');
 // POST without CSRF token
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/?action=create_project",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['name' => 'CSRF test']),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-    CURLOPT_COOKIEFILE => $cookieFile,
-    CURLOPT_COOKIEJAR => $cookieFile,
+  CURLOPT_URL => "$BASE/?action=create_project",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['name' => 'CSRF test']),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+  CURLOPT_COOKIEFILE => $cookieFile,
+  CURLOPT_COOKIEJAR => $cookieFile,
 ]);
 $resp = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1429,14 +1470,14 @@ assert_eq(403, $httpCode, 'POST without CSRF token rejected');
 // POST with wrong CSRF token
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/?action=create_project",
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['name' => 'CSRF test']),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-CSRF-Token: invalidtoken'],
-    CURLOPT_COOKIEFILE => $cookieFile,
-    CURLOPT_COOKIEJAR => $cookieFile,
+  CURLOPT_URL => "$BASE/?action=create_project",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_POST => true,
+  CURLOPT_POSTFIELDS => json_encode(['name' => 'CSRF test']),
+  CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-CSRF-Token: invalidtoken'],
+  CURLOPT_COOKIEFILE => $cookieFile,
+  CURLOPT_COOKIEJAR => $cookieFile,
 ]);
 $resp = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1491,11 +1532,11 @@ assert_eq(401, $r['status'], 'anonymous cannot list cards to discover file paths
 
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/?file=" . urlencode($attPath),
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $fileCookie,
-    CURLOPT_COOKIEJAR => $fileCookie,
+  CURLOPT_URL => "$BASE/?file=" . urlencode($attPath),
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $fileCookie,
+  CURLOPT_COOKIEJAR => $fileCookie,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1504,11 +1545,11 @@ assert_eq(401, $httpCode, 'anonymous cannot download an attachment');
 
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/?file=" . urlencode('/' . $attPath),
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_COOKIEFILE => $fileCookie,
-    CURLOPT_COOKIEJAR => $fileCookie,
+  CURLOPT_URL => "$BASE/?file=" . urlencode('/' . $attPath),
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
+  CURLOPT_COOKIEFILE => $fileCookie,
+  CURLOPT_COOKIEJAR => $fileCookie,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1519,9 +1560,9 @@ assert_eq(401, $httpCode, 'leading slash does not bypass file authorization');
 
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/?file=" . urlencode($attPath) . '&guest=' . urlencode($guestToken),
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
+  CURLOPT_URL => "$BASE/?file=" . urlencode($attPath) . '&guest=' . urlencode($guestToken),
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => true,
 ]);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1535,9 +1576,9 @@ assert_true(stripos($headers, 'Content-Security-Policy: sandbox') !== false, 'at
 // Direct /uploads requests are denied, even if the file exists.
 $ch = curl_init();
 curl_setopt_array($ch, [
-    CURLOPT_URL => "$BASE/uploads/" . $attPath,
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => false,
+  CURLOPT_URL => "$BASE/uploads/" . $attPath,
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
 ]);
 curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -1618,9 +1659,9 @@ section('Search Feature');
 // Fetch raw HTML page to verify search markup and JS are present
 $ch = curl_init("$BASE/");
 curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_COOKIEFILE => $cookieFile,
-    CURLOPT_COOKIEJAR => $cookieFile,
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_COOKIEFILE => $cookieFile,
+  CURLOPT_COOKIEJAR => $cookieFile,
 ]);
 $html = curl_exec($ch);
 curl_close($ch);
@@ -1664,9 +1705,9 @@ $card1 = null;
 $card2 = null;
 $card3 = null;
 foreach ($r['body'] as $c) {
-    if ($c['id'] == $searchCard1) $card1 = $c;
-    if ($c['id'] == $searchCard2) $card2 = $c;
-    if ($c['id'] == $searchCard3) $card3 = $c;
+  if ($c['id'] == $searchCard1) $card1 = $c;
+  if ($c['id'] == $searchCard2) $card2 = $c;
+  if ($c['id'] == $searchCard3) $card3 = $c;
 }
 
 assert_true($card1 !== null, 'search card 1 found in list_cards');
@@ -1752,31 +1793,32 @@ assert_true(str_contains($html, '.comment-body') && str_contains($html, 'margin-
 section('API Tokens');
 
 // Helper for bearer-token requests
-function reqBearer(string $action, string $token, array $data = [], string $method = 'GET'): array {
-    global $BASE;
-    $url = "$BASE/?action=$action";
-    $ch = curl_init();
-    if ($method === 'GET' && $data) {
-        $url .= '&' . http_build_query($data);
-    }
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HEADER => true,
-    ]);
-    $headers = ["Authorization: Bearer $token"];
-    if ($method === 'POST') {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        $headers[] = 'Content-Type: application/json';
-    }
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-    $body = substr($response, $headerSize);
-    curl_close($ch);
-    return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
+function reqBearer(string $action, string $token, array $data = [], string $method = 'GET'): array
+{
+  global $BASE;
+  $url = "$BASE/?action=$action";
+  $ch = curl_init();
+  if ($method === 'GET' && $data) {
+    $url .= '&' . http_build_query($data);
+  }
+  curl_setopt_array($ch, [
+    CURLOPT_URL => $url,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => true,
+  ]);
+  $headers = ["Authorization: Bearer $token"];
+  if ($method === 'POST') {
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    $headers[] = 'Content-Type: application/json';
+  }
+  curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+  $response = curl_exec($ch);
+  $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+  $body = substr($response, $headerSize);
+  curl_close($ch);
+  return ['status' => $httpCode, 'body' => json_decode($body, true) ?? [], 'raw' => $body];
 }
 
 // List tokens (none yet)
@@ -2002,10 +2044,10 @@ assert_true(!empty($r['body'][0]['card_title']), 'card_title stored on entry');
 $guestToken = '';
 $r = req('list_guests', ['project_id' => $adminProjectId], 'GET', '', $cookieFile);
 if (count($r['body']) === 0) {
-    $r = req('create_guest', ['project_id' => $adminProjectId, 'name' => 'Time Guest'], 'POST', $adminCsrf);
-    $guestToken = $r['body']['token'];
+  $r = req('create_guest', ['project_id' => $adminProjectId, 'name' => 'Time Guest'], 'POST', $adminCsrf);
+  $guestToken = $r['body']['token'];
 } else {
-    $guestToken = $r['body'][0]['token'];
+  $guestToken = $r['body'][0]['token'];
 }
 $guestCookie = tempnam(sys_get_temp_dir(), 'kanban_guest_');
 $r = req('time_report', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
@@ -2275,7 +2317,7 @@ section('Updates');
 // auth_status returns version field
 $r = req('auth_status');
 assert_true(isset($r['body']['version']), 'auth_status returns version field');
-assert_eq('0.3.2', $r['body']['version'], 'version matches expected value');
+assert_eq('0.3.3', $r['body']['version'], 'version matches expected value');
 
 // auth_status returns update_available field
 assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');
@@ -2308,8 +2350,8 @@ assert_true($constPos < $routerPos, 'GITHUB_RAW_URL defined before API router');
 // apply_update must refuse non-newer versions. Without this, a stale cached release
 // (e.g. main still on an older tag) downgrades and overwrites index.php.
 assert_true(
-    str_contains($source, "version_compare(\$newVersion, APP_VERSION, '>')"),
-    'apply_update only applies strictly newer versions'
+  str_contains($source, "version_compare(\$newVersion, APP_VERSION, '>')"),
+  'apply_update only applies strictly newer versions'
 );
 
 // apply_update requires admin (unauthenticated returns 403)
@@ -2732,11 +2774,11 @@ $cardDragHandlersRefreshing = 0;
 $cardDragHandlersCaching = 0;
 $scanPos = 0;
 while (($p = strpos($src, 'onEnd: (evt) => {', $scanPos)) !== false) {
-    $cardDragHandlers++;
-    $handler = substr($src, $p, 1000);
-    if (str_contains($handler, 'updateColumnCounts()')) $cardDragHandlersRefreshing++;
-    if (str_contains($handler, 'cached.column_id = newColumnId')) $cardDragHandlersCaching++;
-    $scanPos = $p + 1;
+  $cardDragHandlers++;
+  $handler = substr($src, $p, 1000);
+  if (str_contains($handler, 'updateColumnCounts()')) $cardDragHandlersRefreshing++;
+  if (str_contains($handler, 'cached.column_id = newColumnId')) $cardDragHandlersCaching++;
+  $scanPos = $p + 1;
 }
 assert_eq(2, $cardDragHandlers, 'initSortable has two card-move handlers (guest and signed-in)');
 assert_eq($cardDragHandlers, $cardDragHandlersRefreshing, 'every card-move handler refreshes column counts');
@@ -2749,9 +2791,9 @@ assert_eq($cardDragHandlers, $cardDragHandlersCaching, 'every card-move handler 
 $cardDragPos = strpos($src, "this.api('move_card'");
 $cardDragTail = $cardDragPos === false ? '' : substr($src, $cardDragPos, 800);
 assert_true(
-    strpos($cardDragTail, 'updateColumnCounts()') !== false
+  strpos($cardDragTail, 'updateColumnCounts()') !== false
     && strpos($cardDragTail, 'updateColumnCounts()') > strpos($cardDragTail, "'POST'"),
-    'column counts refresh after move_card is sent'
+  'column counts refresh after move_card is sent'
 );
 
 // The counts must count the same thing renderBoard does: cards that are still visible,
@@ -2775,8 +2817,8 @@ $lightboxEscPos = strpos($escTail, "\$('.lightbox').length");
 $modalEscPos = strpos($escTail, "\$('#modal-overlay').hasClass('active')");
 assert_true($lightboxEscPos !== false, 'Escape handler checks for an open lightbox');
 assert_true(
-    $lightboxEscPos !== false && $modalEscPos !== false && $lightboxEscPos < $modalEscPos,
-    'Escape closes the lightbox before the card modal'
+  $lightboxEscPos !== false && $modalEscPos !== false && $lightboxEscPos < $modalEscPos,
+  'Escape closes the lightbox before the card modal'
 );
 
 // ─── MODAL SCROLL RESET ──────────────────────────────────
@@ -2784,16 +2826,16 @@ echo "\n" . colorBold('=== Modal Scroll Reset ===') . "\n";
 // Opening a modal must start at the top, otherwise a long card opened after a
 // scrolled one inherits the previous scroll position.
 assert_true(
-    preg_match('/openModal\([^)]*\)\s*\{.*?\.scrollTop\(0\)/s', $src) === 1,
-    'openModal resets the modal body scroll to the top'
+  preg_match('/openModal\([^)]*\)\s*\{.*?\.scrollTop\(0\)/s', $src) === 1,
+  'openModal resets the modal body scroll to the top'
 );
 
 // ─── RESULTS ─────────────────────────────────────────────
 echo "\n" . colorBold(str_repeat('=', 80)) . "\n";
 if ($failed === 0) {
-    echo colorGreen('ALL TESTS PASSED') . "\n";
+  echo colorGreen('ALL TESTS PASSED') . "\n";
 } else {
-    echo colorRed('TESTS FAILED') . "\n";
+  echo colorRed('TESTS FAILED') . "\n";
 }
 $total = $passed + $failed;
 echo colorBold("Pass: $passed  Fail: $failed  Total: $total") . "\n";
@@ -2810,14 +2852,14 @@ proc_close($serverProc);
 @unlink($TEST_DB . '-shm');
 @unlink($TEST_DB . '-journal');
 if (is_dir($TEST_UPLOAD_DIR)) {
-    $files = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($TEST_UPLOAD_DIR, RecursiveDirectoryIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
-    );
-    foreach ($files as $file) {
-        $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-    }
-    rmdir($TEST_UPLOAD_DIR);
+  $files = new RecursiveIteratorIterator(
+    new RecursiveDirectoryIterator($TEST_UPLOAD_DIR, RecursiveDirectoryIterator::SKIP_DOTS),
+    RecursiveIteratorIterator::CHILD_FIRST
+  );
+  foreach ($files as $file) {
+    $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
+  }
+  rmdir($TEST_UPLOAD_DIR);
 }
 
 exit($failed > 0 ? 1 : 0);
