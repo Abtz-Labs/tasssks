@@ -103,6 +103,11 @@ Click "Add card" at the bottom of any column. Choose **Top** or **Bottom** in th
 - File attachments
 - Comments
 
+Attachments are limited to an allowlist: JPG, PNG, GIF, WebP, PDF, TXT, CSV,
+Markdown, Word/Excel/PowerPoint, OpenDocument, and ZIP. SVG and executable
+file types are rejected. Downloads are served through `index.php` with project
+authorization, not from a public upload URL.
+
 Drag cards between columns or reorder them within a column. Drag columns to reorder them.
 
 Each column header has a menu (the `⋮` button) with two options:
@@ -252,27 +257,71 @@ For production, use Apache or Nginx with PHP-FPM. The key security consideration
   TASSSKS_UPLOAD_DIR=/var/data/tasssks-uploads php -S localhost:2020 index.php
   ```
 
+  Direct requests to the upload directory are denied. Files are served through
+  `index.php` so the project guest permission check applies. Uploads use an
+  extension allowlist (raster images, PDF, text/CSV/Markdown, Office documents,
+  OpenDocument files, and ZIP). SVG and executable extensions are rejected.
+  If you set a custom upload directory that stays inside the web root, also
+  deny that exact path in Apache/Nginx; the built-in rules only know the
+  default `uploads/` name.
+
 - **Max upload size.** Defaults to 2 MB. Override with `TASSSKS_MAX_UPLOAD_SIZE` (value in bytes):
 
   ```bash
   TASSSKS_MAX_UPLOAD_SIZE=10485760 php -S localhost:2020 index.php  # 10 MB
   ```
 
-- **Deny direct file access.** The application blocks requests to `.sqlite`, `.env`, and `.git` paths internally, but your web server should also enforce this as a second layer.
+- **HTTPS behind a reverse proxy.** Set `TASSSKS_FORCE_HTTPS=1` when TLS ends
+  at a proxy, so the session cookie gets the `Secure` flag and HSTS is sent.
+  Only enable it when the public request really is HTTPS; otherwise browsers
+  will not send the session cookie back.
+
+  ```bash
+  TASSSKS_FORCE_HTTPS=1 php -S localhost:2020 index.php
+  ```
+
+- **Deny direct file access.** The application blocks requests to SQLite files,
+  WAL/SHM/journal sidecars, `.env`, `.git`, `tests.php`, and the upload
+  directory internally, but your web server should also enforce this as a
+  second layer.
 - **Do not deploy `tests.php` to production.** It is a development-only file.
 
 ### Apache
 
-A `.htaccess` file is included in the repository. It routes requests through `index.php`, blocks access to database and sensitive files, and denies access to `tests.php`. No extra setup needed if your Apache has `mod_rewrite` and `AllowOverride All`.
+A `.htaccess` file is included in the repository. It routes requests through
+`index.php`, blocks access to database and sensitive files, denies direct
+`uploads/` requests and `tests.php`, and disables directory indexes. No extra
+setup needed if your Apache has `mod_rewrite` and `AllowOverride All`.
 
 ### Nginx
 
 ```nginx
-location ~ \.(sqlite|sqlite3|db|sql|env|bak)$ {
+location ~ \.(sqlite|sqlite3|db|sql)(-wal|-shm|-journal)?$ {
+    deny all;
+}
+
+location ~ \.(env|bak)$ {
     deny all;
 }
 
 location ~ /\.git {
+    deny all;
+}
+
+location = /tests.php {
+    deny all;
+}
+
+location ^~ /uploads/ {
+    deny all;
+}
+
+# Keep ACME HTTP-01 challenge files reachable for certificate renewal.
+location ^~ /.well-known/ {
+    try_files $uri =404;
+}
+
+location ~ /\. {
     deny all;
 }
 

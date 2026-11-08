@@ -152,3 +152,14 @@ Session checkpoints for continuity across sessions.
 - Also closed an adjacent hole in the same endpoint: `project_id` was checked for access but `card_id` was queried without verifying the card belongs to that project. `card_id` now resolves the card's real project first and mismatches return 404.
 - Regression tests added: invalid token, token from another project, revoked token (JSON + CSV), guest list without permission, guest list with permission, cross-project card. Test count: 668 (all passing).
 - `security.txt` is not in this repository, so the expired `Expires` date could not be updated here.
+
+## 2026-11-08 (security hardening review)
+
+- Closed the remaining review findings. Migration v10 adds `users.session_version` and `login_attempts.email`; login/API auth now carry the session version. Recovery-key login and admin password reset invalidate sessions, delete API tokens, and invalidate the old recovery key. Self password change rotates the recovery key, revokes tokens, regenerates the session ID, and keeps only the current session.
+- XSS: tag/column colors are validated server-side and passed through `safeColor()` on render; attribute values use a corrected `escAttr()`; inline JS arguments use `jsArg()`; markdown edit paths sanitize with DOMPurify. DOMPurify bumped to 3.3.2 with an updated SRI hash. Tag/column color XSS was reproduced in Chrome before the fix and is dead after it.
+- Files: uploads are allowlisted (no SVG/executable extensions), direct `/uploads` is denied in PHP/Apache/Nginx, and `?file=` resolves the attachment row then authorizes the card's project. Guest attachment URLs now carry the guest token. File responses are private, sandboxed, and downloaded unless they are valid raster images.
+- Time: guest `total_minutes` is omitted from `list_cards` unless `guest_can_view_time` is on; `move_card` scopes the target column to the card's project; `toggle_card_tag` scopes the tag. `create/update_time_entry` validates real calendar dates and HH:MM. CSV export neutralizes formulas and quotes every field.
+- Webhooks: only http/https, DNS is resolved and pinned, redirects disabled, and private/reserved ranges (including CGNAT, benchmark, IPv6 special ranges) are rejected. Validation runs on create, update, and send.
+- Hardening: CSP with SRI-pinned CDN assets, optional `TASSSKS_FORCE_HTTPS=1`, HSTS when HTTPS, sanitized SMTP EHLO host, cron admin-session calls require POST, per-email login rate limiting, SQLite sidecar blocking (`.sqlite-wal`, `-shm`, `-journal`) plus Nginx/Apache docs.
+- Test trap: tests.php reuses port 8089 if an old test server is still running, silently using stale env. Kill it before trusting a run. Clean run: 743 passed, 0 failed.
+- Password minimum length stays 6 by design; deployment owner decides the policy.

@@ -8,18 +8,24 @@ error_reporting(E_ALL & ~E_DEPRECATED);
 
 $TEST_PORT = 8089;
 $TEST_DB = __DIR__ . '/test.sqlite';
+$TEST_UPLOAD_DIR = sys_get_temp_dir() . '/kanban_test_uploads_' . getmypid();
 $BASE = "http://localhost:$TEST_PORT";
 $passed = 0;
 $failed = 0;
 $cookieFile = tempnam(sys_get_temp_dir(), 'kanban_test_');
 
-// Clean previous test DB
+// Clean previous test DB and uploads
 @unlink($TEST_DB);
+@unlink($TEST_DB . '-wal');
+@unlink($TEST_DB . '-shm');
+@unlink($TEST_DB . '-journal');
+@mkdir($TEST_UPLOAD_DIR, 0755, true);
 
 // Start a dedicated test server
 $serverCmd = sprintf(
-    'TASSSKS_DB_FILE=%s php -S localhost:%d -t %s %s/index.php',
+    'TASSSKS_DB_FILE=%s TASSSKS_UPLOAD_DIR=%s php -S localhost:%d -t %s %s/index.php',
     escapeshellarg($TEST_DB),
+    escapeshellarg($TEST_UPLOAD_DIR),
     $TEST_PORT,
     escapeshellarg(__DIR__),
     escapeshellarg(__DIR__)
@@ -400,6 +406,15 @@ $maForeignCol = $r['body'][0]['id'] ?? 0;
 $r = req('move_all_cards', ['column_id' => $maSrc, 'target_column_id' => $maForeignCol], 'POST', $adminCsrf);
 assert_eq(404, $r['status'], 'move all cards rejects target column from another project');
 
+// A single card cannot be moved into another project either.
+$r = req('create_card', ['column_id' => $maSrc, 'title' => 'Cross project move'], 'POST', $adminCsrf);
+$crossMoveCard = $r['body']['id'];
+$r = req('move_card', ['id' => $crossMoveCard, 'column_id' => $maForeignCol, 'position' => 0], 'POST', $adminCsrf);
+assert_eq(404, $r['status'], 'move card rejects target column from another project');
+$r = req('move_card', ['id' => $crossMoveCard, 'column_id' => 999999, 'position' => 0], 'POST', $adminCsrf);
+assert_eq(404, $r['status'], 'move card rejects unknown target column');
+req('delete_card', ['id' => $crossMoveCard], 'POST', $adminCsrf);
+
 $r = req('move_all_cards', ['column_id' => $maSrc, 'target_column_id' => $maTgt], 'POST', $memberCsrf, $memberCookie);
 assert_eq(403, $r['status'], 'member cannot move all cards in a project they do not own');
 
@@ -568,6 +583,8 @@ assert_eq(403, $r['status'], 'wrong current password rejected');
 
 $r = req('account_update', ['name' => 'X', 'email' => 'member@test.com', 'password' => 'newpw22', 'current_password' => 'newpass1'], 'POST', $memberCsrf, $memberCookie);
 assert_eq(200, $r['status'], 'password change with correct current password');
+assert_true(!empty($r['body']['recovery_key']), 'password change returns a rotated recovery key');
+$memberRecoveryKey = $r['body']['recovery_key'];
 
 // ─── GUEST ACCESS ────────────────────────────────────────
 section('Guest Access');
@@ -693,12 +710,30 @@ $r = req('list_webhooks', ['project_id' => $adminProjectId]);
 assert_eq(200, $r['status'], 'list webhooks returns 200');
 assert_eq(0, count($r['body']), 'no webhooks initially');
 
-$r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => 'https://hooks.slack.com/test', 'type' => 'slack'], 'POST', $adminCsrf);
+$r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => 'https://1.1.1.1/hook', 'type' => 'slack'], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'create webhook succeeds');
 $webhookId = $r['body']['id'];
 
 $r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => 'not-a-url', 'type' => 'generic'], 'POST', $adminCsrf);
 assert_eq(400, $r['status'], 'invalid URL rejected');
+
+// SSRF protection: no loopback, private, file, gopher, or dict URLs.
+foreach ([
+    'http://127.0.0.1/hook',
+    'http://localhost/hook',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://100.100.100.200/latest/meta-data/',
+    'http://198.18.0.1/hook',
+    'file:///etc/passwd',
+    'gopher://127.0.0.1:6379/_PING',
+    'dict://127.0.0.1:11211/stat',
+] as $unsafeUrl) {
+    $r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => $unsafeUrl, 'type' => 'generic'], 'POST', $adminCsrf);
+    assert_eq(400, $r['status'], "unsafe webhook URL rejected: $unsafeUrl");
+}
+
+$r = req('update_webhook', ['id' => $webhookId, 'url' => 'file:///etc/passwd'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'unsafe webhook URL rejected on update');
 
 $r = req('create_webhook', ['project_id' => $adminProjectId, 'url' => 'https://example.com', 'type' => 'invalid'], 'POST', $adminCsrf);
 assert_eq(400, $r['status'], 'invalid type rejected');
@@ -766,7 +801,7 @@ $r = req('delete_webhook', ['id' => $telegramHookId], 'POST', $adminCsrf);
 // Create webhook with message_template (Slack)
 $r = req('create_webhook', [
     'project_id' => $adminProjectId,
-    'url' => 'https://hooks.slack.com/test',
+    'url' => 'https://1.1.1.1/hook',
     'type' => 'slack',
     'message_template' => '*{{event}}*: {{project}}',
 ], 'POST', $adminCsrf);
@@ -960,13 +995,13 @@ $r = req('create_card', ['column_id' => $colId, 'title' => 'Immediate test card'
 assert_eq(200, $r['status'], 'member creates card (triggers notification)');
 
 // send_notifications only processes immediate users
-$r = req('send_notifications');
+$r = req('send_notifications', [], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'send_notifications endpoint returns 200');
 assert_true(isset($r['body']['processed']), 'send_notifications reports processed count');
 assert_true($r['body']['processed'] >= 1, 'immediate user processed');
 
 // send_notifications skips daily users
-$r = req('send_notifications');
+$r = req('send_notifications', [], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'second call succeeds');
 assert_eq(0, $r['body']['processed'], 'no pending immediate after first run');
 
@@ -981,18 +1016,18 @@ $r = req('create_card', ['column_id' => $colId, 'title' => 'Daily test card'], '
 assert_eq(200, $r['status'], 'another card triggers notification');
 
 // send_notifications should NOT process daily users
-$r = req('send_notifications');
+$r = req('send_notifications', [], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'send_notifications with daily user');
 assert_eq(0, $r['body']['processed'], 'send_notifications skips daily users');
 
 // send_digest processes daily users
-$r = req('send_digest');
+$r = req('send_digest', [], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'send_digest endpoint returns 200');
 assert_true(isset($r['body']['processed']), 'send_digest reports processed count');
 assert_true($r['body']['processed'] >= 1, 'daily user processed by digest');
 
 // After digest, nothing pending
-$r = req('send_digest');
+$r = req('send_digest', [], 'POST', $adminCsrf);
 assert_eq(200, $r['status'], 'second digest call succeeds');
 assert_eq(0, $r['body']['processed'], 'no pending after digest');
 
@@ -1013,7 +1048,7 @@ curl_setopt_array($ch, [
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
-assert_eq(403, $httpCode, 'unauthenticated digest without token rejected');
+assert_eq(405, $httpCode, 'unauthenticated digest without token requires POST');
 @unlink($noAuthCookie);
 
 // Cron token auth
@@ -1138,6 +1173,9 @@ curl_close($ch);
 assert_true(stripos($headResponse, 'X-Frame-Options: DENY') !== false, 'X-Frame-Options header present');
 assert_true(stripos($headResponse, 'X-Content-Type-Options: nosniff') !== false, 'X-Content-Type-Options header present');
 assert_true(stripos($headResponse, 'Referrer-Policy: strict-origin-when-cross-origin') !== false, 'Referrer-Policy header present');
+assert_true(stripos($headResponse, 'Content-Security-Policy') !== false, 'Content-Security-Policy header present');
+assert_true(stripos($headResponse, "object-src 'none'") !== false, 'CSP blocks plugins');
+assert_true(stripos($headResponse, "frame-ancestors 'none'") !== false, 'CSP blocks framing');
 assert_true(stripos($headResponse, 'X-Powered-By') === false, 'X-Powered-By header removed');
 assert_true(stripos($headResponse, 'HttpOnly') !== false, 'Session cookie has HttpOnly flag');
 assert_true(stripos($headResponse, 'SameSite=Strict') !== false, 'Session cookie has SameSite flag');
@@ -1145,7 +1183,12 @@ assert_true(stripos($headResponse, 'SameSite=Strict') !== false, 'Session cookie
 // ─── SECURITY: SENSITIVE FILE ACCESS ────────────────────
 section('Sensitive File Blocking');
 
-$sensitiveFiles = ['tasssks.sqlite', 'test.sqlite', 'data.db', '.env', '.git/config', 'index.php.bak'];
+$sensitiveFiles = [
+    'tasssks.sqlite', 'test.sqlite', 'data.db',
+    'tasssks.sqlite-wal', 'tasssks.sqlite-shm', 'tasssks.sqlite-journal',
+    'test.sqlite-wal', 'test.sqlite-shm',
+    '.env', '.git/config', 'index.php.bak', 'tests.php',
+];
 foreach ($sensitiveFiles as $f) {
     $ch = curl_init();
     curl_setopt_array($ch, [
@@ -1258,6 +1301,19 @@ assert_true(!empty($r['body']['password_reset']), 'member recovery login sets pa
 
 @unlink($rkCookie);
 
+// Recovery login invalidates older browser sessions.
+$r = req('auth_status', [], 'GET', '', $cookieFile);
+assert_eq(false, $r['body']['authenticated'], 'recovery login invalidates older admin sessions');
+$r = req('auth_status', [], 'GET', '', $memberCookie);
+assert_eq(false, $r['body']['authenticated'], 'member recovery login invalidates older member sessions');
+
+// Refresh the admin session used by the remaining tests.
+@unlink($cookieFile);
+$cookieFile = tempnam(sys_get_temp_dir(), 'kanban_test_');
+$r = req('auth_login', ['email' => 'admin@test.com', 'password' => 'recovered99'], 'POST');
+assert_eq(200, $r['status'], 'admin re-login after recovery');
+$adminCsrf = $r['body']['csrf_token'];
+
 // ─── SECURITY: RATE LIMIT ───────────────────────────────
 section('Rate Limit');
 
@@ -1325,6 +1381,30 @@ curl_close($ch);
 assert_eq(429, $httpCode, 'X-Forwarded-For does not bypass rate limit');
 @unlink($rateCookie);
 
+// Per-email limiting also blocks attempts spread across many IPs.
+$testDb = new PDO('sqlite:' . $TEST_DB, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$testDb->exec("DELETE FROM login_attempts");
+$stmt = $testDb->prepare("INSERT INTO login_attempts (ip, email) VALUES (?, ?)");
+for ($i = 0; $i < 15; $i++) $stmt->execute(["10.0.0.$i", 'crossip@test.com']);
+$testDb = null;
+$r = req('auth_login', ['email' => 'crossip@test.com', 'password' => 'wrong'], 'POST');
+assert_eq(429, $r['status'], 'per-email rate limit applies across IPs');
+
+// A successful login for one account must not clear another account's failures.
+$testDb = new PDO('sqlite:' . $TEST_DB, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$testDb->exec("DELETE FROM login_attempts");
+$stmt = $testDb->prepare("INSERT INTO login_attempts (ip, email) VALUES (?, ?)");
+for ($i = 0; $i < 15; $i++) $stmt->execute(["10.9.0.$i", 'victim@test.com']);
+$testDb = null;
+$r = req('auth_login', ['email' => 'admin@test.com', 'password' => 'recovered99'], 'POST');
+assert_eq(200, $r['status'], 'admin login succeeds during rate limit isolation test');
+$adminCsrf = $r['body']['csrf_token'];
+$r = req('auth_login', ['email' => 'victim@test.com', 'password' => 'wrong'], 'POST');
+assert_eq(429, $r['status'], 'successful login does not clear another account failures');
+$testDb = new PDO('sqlite:' . $TEST_DB, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$testDb->exec("DELETE FROM login_attempts");
+$testDb = null;
+
 // ─── SECURITY: CSRF ─────────────────────────────────────
 section('CSRF Protection');
 
@@ -1370,7 +1450,7 @@ assert_eq(200, $r['status'], 'POST with valid CSRF token accepted');
 // ─── SECURITY: ATTACHMENT CSRF ───────────────────────────
 section('Attachment CSRF');
 
-$tmpFile = tempnam(sys_get_temp_dir(), 'kanban_att_');
+$tmpFile = sys_get_temp_dir() . '/kanban_att_' . bin2hex(random_bytes(4)) . '.txt';
 file_put_contents($tmpFile, 'test attachment content');
 
 $r = req('create_card', ['column_id' => $colId, 'title' => 'Attachment test card'], 'POST', $adminCsrf);
@@ -1386,8 +1466,86 @@ assert_eq(403, $r['status'], 'upload attachment with wrong CSRF token rejected')
 $r = reqUpload('upload_attachment', $tmpFile, $attCardId, $adminCsrf);
 assert_eq(200, $r['status'], 'upload attachment with valid CSRF token accepted');
 assert_true(!empty($r['body']['id']), 'upload returns attachment id');
+$attPath = $r['body']['path'] ?? '';
 
-$bigFile = tempnam(sys_get_temp_dir(), 'kanban_big_');
+// Active content and executable extensions are rejected.
+$svgFile = sys_get_temp_dir() . '/kanban_att_' . bin2hex(random_bytes(4)) . '.svg';
+file_put_contents($svgFile, '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+$r = reqUpload('upload_attachment', $svgFile, $attCardId, $adminCsrf);
+assert_eq(400, $r['status'], 'SVG upload rejected');
+
+$phpFile = sys_get_temp_dir() . '/kanban_att_' . bin2hex(random_bytes(4)) . '.php5';
+file_put_contents($phpFile, '<?php echo 1;');
+$r = reqUpload('upload_attachment', $phpFile, $attCardId, $adminCsrf);
+assert_eq(400, $r['status'], 'alternative PHP extension rejected');
+
+$noExtFile = sys_get_temp_dir() . '/kanban_att_' . bin2hex(random_bytes(4));
+file_put_contents($noExtFile, 'no extension');
+$r = reqUpload('upload_attachment', $noExtFile, $attCardId, $adminCsrf);
+assert_eq(400, $r['status'], 'upload without an allowed extension rejected');
+
+// Files are only served through ?file= with project authorization.
+$fileCookie = tempnam(sys_get_temp_dir(), 'kanban_file_');
+$r = req('list_cards', ['project_id' => $adminProjectId], 'GET', '', $fileCookie);
+assert_eq(401, $r['status'], 'anonymous cannot list cards to discover file paths');
+
+$ch = curl_init();
+curl_setopt_array($ch, [
+    CURLOPT_URL => "$BASE/?file=" . urlencode($attPath),
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => true,
+    CURLOPT_COOKIEFILE => $fileCookie,
+    CURLOPT_COOKIEJAR => $fileCookie,
+]);
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+assert_eq(401, $httpCode, 'anonymous cannot download an attachment');
+
+$ch = curl_init();
+curl_setopt_array($ch, [
+    CURLOPT_URL => "$BASE/?file=" . urlencode('/' . $attPath),
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => true,
+    CURLOPT_COOKIEFILE => $fileCookie,
+    CURLOPT_COOKIEJAR => $fileCookie,
+]);
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+$headers = substr($response, 0, $headerSize);
+curl_close($ch);
+assert_eq(401, $httpCode, 'leading slash does not bypass file authorization');
+
+$ch = curl_init();
+curl_setopt_array($ch, [
+    CURLOPT_URL => "$BASE/?file=" . urlencode($attPath) . '&guest=' . urlencode($guestToken),
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => true,
+]);
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+$headers = substr($response, 0, $headerSize);
+curl_close($ch);
+assert_eq(200, $httpCode, 'guest with project access can download an attachment');
+assert_true(stripos($headers, 'Cache-Control: private') !== false, 'attachment response is private');
+assert_true(stripos($headers, 'Content-Security-Policy: sandbox') !== false, 'attachment response is sandboxed');
+
+// Direct /uploads requests are denied, even if the file exists.
+$ch = curl_init();
+curl_setopt_array($ch, [
+    CURLOPT_URL => "$BASE/uploads/" . $attPath,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => false,
+]);
+curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+assert_eq(403, $httpCode, 'direct upload URL is denied');
+@unlink($fileCookie);
+
+$bigFile = sys_get_temp_dir() . '/kanban_big_' . bin2hex(random_bytes(4)) . '.txt';
 file_put_contents($bigFile, str_repeat('x', 3 * 1024 * 1024));
 
 $r = reqUpload('upload_attachment', $bigFile, $attCardId, $adminCsrf);
@@ -1396,6 +1554,9 @@ assert_true(str_contains($r['body']['error'] ?? '', 'too large'), 'oversized upl
 assert_true(str_contains($r['body']['error'] ?? '', 'max 2MB'), 'oversized upload error states the real limit');
 
 @unlink($bigFile);
+@unlink($svgFile);
+@unlink($phpFile);
+@unlink($noExtFile);
 @unlink($tmpFile);
 
 // ─── CLEANUP ─────────────────────────────────────────────
@@ -1407,6 +1568,49 @@ assert_eq(200, $r['status'], 'remove member');
 
 $r = req('team_list');
 assert_eq(1, count($r['body']), 'only admin remains');
+
+// Password change/reset invalidates sessions and API tokens.
+$r = req('team_add', ['name' => 'Session User', 'email' => 'session@test.com', 'password' => 'session1', 'role' => 'member'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create session test user');
+$sessionUserId = $r['body']['id'];
+$sessionCookie = tempnam(sys_get_temp_dir(), 'kanban_session_');
+$sessionCookie2 = tempnam(sys_get_temp_dir(), 'kanban_session2_');
+$r = req('auth_login', ['email' => 'session@test.com', 'password' => 'session1'], 'POST', '', $sessionCookie);
+assert_eq(200, $r['status'], 'session test user login');
+$sessionCsrf = $r['body']['csrf_token'];
+$r = req('auth_login', ['email' => 'session@test.com', 'password' => 'session1'], 'POST', '', $sessionCookie2);
+assert_eq(200, $r['status'], 'session test user second login');
+
+$r = req('create_api_token', ['name' => 'Session token'], 'POST', $sessionCsrf, $sessionCookie);
+$oldSessionToken = $r['body']['token'] ?? '';
+
+// Changing your own password keeps this session and kills the other sessions/tokens.
+$r = req('account_update', ['name' => 'Session User', 'email' => 'session@test.com', 'password' => 'session2', 'current_password' => 'session1'], 'POST', $sessionCsrf, $sessionCookie);
+assert_eq(200, $r['status'], 'session test user changes own password');
+assert_true(!empty($r['body']['recovery_key']), 'self password change rotates recovery key');
+$r = req('auth_status', [], 'GET', '', $sessionCookie);
+assert_eq(true, $r['body']['authenticated'], 'current session survives own password change');
+$r = req('auth_status', [], 'GET', '', $sessionCookie2);
+assert_eq(false, $r['body']['authenticated'], 'other sessions die on own password change');
+$r = reqBearer('list_projects', $oldSessionToken);
+assert_eq(401, $r['status'], 'own password change revokes existing API tokens');
+
+$r = req('create_api_token', ['name' => 'Session token after change'], 'POST', $sessionCsrf, $sessionCookie);
+$sessionToken = $r['body']['token'] ?? '';
+
+$r = req('team_reset_password', ['id' => $sessionUserId, 'password' => 'session3'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'admin reset session test user password');
+$r = req('list_api_tokens', [], 'GET', '', $sessionCookie);
+assert_eq(401, $r['status'], 'password reset invalidates old session');
+$r = reqBearer('list_projects', $sessionToken);
+assert_eq(401, $r['status'], 'password reset revokes existing API tokens');
+
+// The reset clears the recovery key hash; the next login issues a fresh key.
+$r = req('auth_login', ['email' => 'session@test.com', 'password' => 'session3'], 'POST', '', $sessionCookie);
+assert_eq(200, $r['status'], 'session test user logs in with new password');
+assert_true(!empty($r['body']['recovery_key']), 'password reset issues a fresh recovery key on next login');
+@unlink($sessionCookie);
+@unlink($sessionCookie2);
 
 // ─── SEARCH FEATURE ─────────────────────────────────────
 section('Search Feature');
@@ -1501,6 +1705,8 @@ assert_true(str_contains($html, 'quill@2.0.3/dist/quill.snow.css'), 'Quill CSS C
 assert_true(str_contains($html, 'quill@2.0.3/dist/quill.js'), 'Quill JS CDN included');
 assert_true(str_contains($html, 'turndown@7.2.0/dist/turndown.js'), 'Turndown CDN included');
 assert_true(str_contains($html, 'turndown-plugin-gfm'), 'Turndown GFM plugin CDN included');
+assert_true(substr_count($html, 'integrity="sha384-') >= 8, 'all CDN assets have SRI hashes');
+assert_true(substr_count($html, 'crossorigin="anonymous"') >= 8, 'all CDN assets use anonymous CORS for SRI');
 
 // JS helpers and config
 assert_true(str_contains($html, '_initQuill('), 'Quill init helper defined');
@@ -1652,6 +1858,28 @@ assert_eq('#5e81ac', $defaultTag['color'], 'tag gets default color when none spe
 $r = req('create_tag', ['project_id' => $adminProjectId, 'name' => '', 'color' => '#22c55e'], 'POST', $adminCsrf);
 assert_eq(400, $r['status'], 'create tag without name fails');
 
+// Colors are validated: they end up in inline style attributes.
+$r = req('create_tag', ['project_id' => $adminProjectId, 'name' => 'XSS', 'color' => 'red" onmouseover="alert(1)'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'invalid tag color rejected');
+
+$r = req('update_column', ['id' => $colId, 'color' => 'red" onmouseover="alert(1)'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'invalid column color rejected');
+
+$r = req('update_column', ['id' => $colId, 'color' => '#123456'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'valid column color accepted');
+
+// Tags cannot be attached to a card in another project.
+$r = req('list_columns', ['project_id' => $memberProjectId]);
+$foreignTagCol = $r['body'][0]['id'] ?? 0;
+$r = req('create_card', ['column_id' => $foreignTagCol, 'title' => 'Foreign tag card'], 'POST', $adminCsrf);
+$foreignTagCardId = $r['body']['id'];
+$r = req('create_tag', ['project_id' => $adminProjectId, 'name' => 'Cross project', 'color' => '#112233'], 'POST', $adminCsrf);
+$crossTagId = $r['body']['id'];
+$r = req('toggle_card_tag', ['card_id' => $foreignTagCardId, 'tag_id' => $crossTagId], 'POST', $adminCsrf);
+assert_eq(404, $r['status'], 'foreign tag cannot be attached to a card');
+req('delete_card', ['id' => $foreignTagCardId], 'POST', $adminCsrf);
+req('delete_tag', ['id' => $crossTagId], 'POST', $adminCsrf);
+
 // Clean up tags
 req('delete_tag', ['id' => $tagId], 'POST', $adminCsrf);
 req('delete_tag', ['id' => $tagId2], 'POST', $adminCsrf);
@@ -1710,6 +1938,19 @@ $timeEntryId2 = $r['body']['id'];
 $r = reqBearer('create_time_entry', $timeMemberTokenRaw, ['card_id' => $timeCardId, 'minutes' => 45, 'worked_at' => '2026-08-16', 'note' => 'Code review'], 'POST');
 assert_eq(200, $r['status'], 'member can create time entry');
 $memberTimeEntryId = $r['body']['id'];
+
+// Invalid dates and times are rejected.
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 30, 'worked_at' => '2026-02-31'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'impossible calendar date rejected');
+
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 30, 'worked_at' => 'not-a-date'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'invalid worked_at format rejected');
+
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '99:99', 'end_time' => '10:00', 'worked_at' => '2026-08-17'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'invalid start_time rejected');
+
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'start_time' => '09:00', 'end_time' => '25:00', 'worked_at' => '2026-08-17'], 'POST', $adminCsrf);
+assert_eq(400, $r['status'], 'invalid end_time rejected');
 
 // List time entries by card
 $r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
@@ -1805,9 +2046,15 @@ $r = req('update_project', ['id' => $adminProjectId, 'guest_can_view_time' => 0]
 assert_eq(200, $r['status'], 'disable guest_can_view_time for list test');
 $r = req('list_time_entries', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
 assert_eq(403, $r['status'], 'guest without time permission cannot list time entries');
+$r = req('list_cards', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
+$guestCard = array_values(array_filter($r['body'], fn($c) => $c['id'] == $timeCardId))[0] ?? null;
+assert_true($guestCard !== null && !array_key_exists('total_minutes', $guestCard), 'guest without time permission sees no card total_minutes');
 $r = req('update_project', ['id' => $adminProjectId, 'guest_can_view_time' => 1], 'POST', $adminCsrf);
 $r = req('list_time_entries', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
 assert_eq(200, $r['status'], 'guest with time permission can list time entries');
+$r = req('list_cards', ['project_id' => $adminProjectId, 'guest' => $guestToken], 'GET', '', $guestCookie);
+$guestCard = array_values(array_filter($r['body'], fn($c) => $c['id'] == $timeCardId))[0] ?? null;
+assert_true($guestCard !== null && isset($guestCard['total_minutes']), 'guest with time permission sees card total_minutes');
 
 // Regression: card_id cannot be used to read another project's entries
 $r = req('list_columns', ['project_id' => $memberProjectId]);
@@ -1833,6 +2080,16 @@ assert_true($r['status'] === 401 || $r['status'] === 403, 'guest cannot create t
 $r = req('time_report', ['project_id' => $adminProjectId, 'format' => 'csv'], 'GET', '', $cookieFile);
 assert_eq(200, $r['status'], 'csv export returns 200');
 assert_true(str_contains($r['raw'], 'Card,Author,Minutes,Date,Note'), 'csv has header row');
+
+// CSV formula injection is neutralized in every text column.
+$r = req('create_card', ['column_id' => $colId, 'title' => '=SUM(1,1)'], 'POST', $adminCsrf);
+$csvCardId = $r['body']['id'];
+$r = req('create_time_entry', ['card_id' => $csvCardId, 'minutes' => 5, 'worked_at' => '2026-08-19', 'note' => '=1+1'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create csv injection fixture');
+$r = req('time_report', ['project_id' => $adminProjectId, 'format' => 'csv'], 'GET', '', $cookieFile);
+assert_true(str_contains($r['raw'], "\"'=SUM(1,1)\""), 'formula-like card title neutralized in CSV');
+assert_true(str_contains($r['raw'], "\"'=1+1\""), 'formula-like note neutralized in CSV');
+req('delete_card', ['id' => $csvCardId], 'POST', $adminCsrf);
 
 // --- Start/End time feature ---
 
@@ -2192,7 +2449,17 @@ $rawUpsertCount = preg_match_all('/INSERT INTO settings.*ON CONFLICT.*DO UPDATE/
 assert_eq(1, $rawUpsertCount, 'settings upsert only appears in setSetting helper');
 
 $rawRotateCount = preg_match_all('/UPDATE users SET recovery_key_hash/', $src);
-assert_eq(1, $rawRotateCount, 'recovery key update only appears in rotateRecoveryKey helper');
+assert_eq(2, $rawRotateCount, 'recovery key updates only appear in recovery-key helpers');
+
+// Output encoding helpers and safe color rendering
+assert_true(str_contains($src, 'jsArg('), 'jsArg helper defined for inline JS values');
+assert_true(str_contains($src, 'safeColor('), 'safeColor helper defined for dynamic colors');
+assert_true(str_contains($src, 'fileUrl(path)'), 'guest attachment URLs include the guest token');
+assert_true(str_contains($src, "const start = this.esc(e.start_time || '')"), 'time entries escape legacy start_time values');
+assert_true(str_contains($src, 'this.esc(this.formatDate(date))'), 'time report date groups are escaped');
+assert_true(str_contains($src, 'csvUrl') && str_contains($src, 'this.guestToken'), 'CSV export keeps the guest token');
+assert_true(str_contains($src, '&quot;') && str_contains($src, '&#39;'), 'attribute escaper handles both quote types');
+assert_true(substr_count($src, 'DOMPurify.sanitize(marked.parse') >= 4, 'all rendered markdown paths sanitize before display/edit');
 
 // Dead code removed
 assert_true(!str_contains($src, 'QUILL_TOOLBAR_FULL'), 'QUILL_TOOLBAR_FULL removed (consolidated)');
@@ -2387,7 +2654,9 @@ $src = file_get_contents(__DIR__ . '/index.php');
 
 // DB migration: position column on projects
 assert_true(str_contains($src, 'ALTER TABLE projects ADD COLUMN position'), 'migration adds position column to projects');
-assert_true(str_contains($src, 'user_version = 9'), 'migration version bumped to 9');
+assert_true(str_contains($src, 'ALTER TABLE users ADD COLUMN session_version'), 'migration adds session_version to users');
+assert_true(str_contains($src, 'ALTER TABLE login_attempts ADD COLUMN email'), 'migration adds email to login_attempts');
+assert_true(str_contains($src, 'user_version = 10'), 'migration version bumped to 10');
 
 // Backend: reorder_projects endpoint
 assert_true(str_contains($src, 'reorder_projects'), 'reorder_projects route exists');
@@ -2537,5 +2806,18 @@ proc_close($serverProc);
 @unlink($memberCookie);
 @unlink($timeMemberCookie ?? '');
 @unlink($TEST_DB);
+@unlink($TEST_DB . '-wal');
+@unlink($TEST_DB . '-shm');
+@unlink($TEST_DB . '-journal');
+if (is_dir($TEST_UPLOAD_DIR)) {
+    $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($TEST_UPLOAD_DIR, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+    foreach ($files as $file) {
+        $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
+    }
+    rmdir($TEST_UPLOAD_DIR);
+}
 
 exit($failed > 0 ? 1 : 0);

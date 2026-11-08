@@ -12,9 +12,23 @@
 // When used as PHP built-in server router, serve allowed static files directly
 if (php_sapi_name() === 'cli-server') {
   $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+  if ($uri === '/tests.php' || str_starts_with($uri, '/uploads/')) {
+    http_response_code(403);
+    return true;
+  }
+  $uploadDirEnv = getenv('TASSSKS_UPLOAD_DIR');
+  if ($uploadDirEnv) {
+    $uploadRoot = realpath($uploadDirEnv);
+    $requestedReal = realpath(__DIR__ . $uri);
+    if ($uploadRoot && $requestedReal && str_starts_with($requestedReal, $uploadRoot . DIRECTORY_SEPARATOR)) {
+      http_response_code(403);
+      return true;
+    }
+  }
   if ($uri !== '/' && $uri !== '' && file_exists(__DIR__ . $uri)) {
     if (
-      preg_match('/\.(sqlite|sqlite3|db|sql|env|htaccess|htpasswd|bak)$/i', $uri)
+      preg_match('/\.(sqlite|sqlite3|db|sql)(-wal|-shm|-journal)?$/i', $uri)
+      || preg_match('/\.(env|git|htaccess|htpasswd|bak)$/i', $uri)
       || str_contains($uri, '/.git')
     ) {
       http_response_code(403);
@@ -33,7 +47,14 @@ define('APP_VERSION', '0.3.2');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', getenv('TASSSKS_UPLOAD_DIR') ?: __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', (int) (getenv('TASSSKS_MAX_UPLOAD_SIZE') ?: (2 * 1024 * 1024)));
-define('IMAGE_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
+define('IMAGE_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif', 'webp']);
+define('ALLOWED_UPLOAD_EXTENSIONS', [
+  'jpg', 'jpeg', 'png', 'gif', 'webp',
+  'pdf', 'txt', 'csv', 'md',
+  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'odt', 'ods', 'odp', 'zip',
+]);
+define('FORCE_HTTPS', getenv('TASSSKS_FORCE_HTTPS') === '1');
 define('GITHUB_RAW_URL', 'https://raw.githubusercontent.com/Abtz-Labs/tasssks/main/index.php');
 
 // ============================================================================
@@ -356,7 +377,21 @@ function migrateDatabase(PDO $db): void
     }
   }
 
-  $db->exec('PRAGMA user_version = 9');
+  // Version 9 → 10: session invalidation + per-email login rate limiting
+  if ($version < 10) {
+    $cols = $db->query("PRAGMA table_info(users)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    if (!in_array('session_version', $cols)) {
+      $db->exec("ALTER TABLE users ADD COLUMN session_version INTEGER DEFAULT 0");
+    }
+    $cols = $db->query("PRAGMA table_info(login_attempts)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    if (!in_array('email', $cols)) {
+      $db->exec("ALTER TABLE login_attempts ADD COLUMN email TEXT DEFAULT ''");
+    }
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email, attempted_at)");
+  }
+
+  $db->exec('PRAGMA user_version = 10');
 }
 
 // ============================================================================
@@ -367,9 +402,11 @@ function migrateDatabase(PDO $db): void
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $requestPath = strtolower(parse_url($requestUri, PHP_URL_PATH));
 if (
-  preg_match('/\.(sqlite|sqlite3|db|sql|bak)$/i', $requestPath)
-  || preg_match('/\.(env|git|htaccess|htpasswd)$/i', $requestPath)
+  preg_match('/\.(sqlite|sqlite3|db|sql)(-wal|-shm|-journal)?$/i', $requestPath)
+  || preg_match('/\.(env|git|htaccess|htpasswd|bak)$/i', $requestPath)
   || str_contains($requestPath, '/.git/')
+  || $requestPath === '/tests.php'
+  || str_starts_with($requestPath, '/uploads/')
 ) {
   http_response_code(403);
   exit;
@@ -379,6 +416,12 @@ header_remove('X-Powered-By');
 header('X-Frame-Options: DENY');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+
+$isHttps = FORCE_HTTPS || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== '' && $_SERVER['HTTPS'] !== 'off');
+if ($isHttps) {
+  header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+}
 
 // ============================================================================
 // HELPERS
@@ -387,7 +430,7 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 session_set_cookie_params([
   'httponly' => true,
   'samesite' => 'Strict',
-  'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+  'secure' => $isHttps,
 ]);
 session_start();
 
@@ -442,6 +485,11 @@ function slugify(string $text): string
   return trim($text, '-');
 }
 
+function isValidColor(string $color): bool
+{
+  return (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $color);
+}
+
 function setSetting(string $key, string $value): void
 {
   getDb()->prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?")
@@ -454,6 +502,22 @@ function rotateRecoveryKey(int $userId): string
   getDb()->prepare("UPDATE users SET recovery_key_hash = ? WHERE id = ?")
     ->execute([hash('sha256', $key), $userId]);
   return $key;
+}
+
+function clearRecoveryKey(int $userId): void
+{
+  getDb()->prepare("UPDATE users SET recovery_key_hash = NULL WHERE id = ?")
+    ->execute([$userId]);
+}
+
+function invalidateUserSessions(int $userId): int
+{
+  $db = getDb();
+  $db->prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ?")
+    ->execute([$userId]);
+  $stmt = $db->prepare("SELECT session_version FROM users WHERE id = ?");
+  $stmt->execute([$userId]);
+  return (int) $stmt->fetchColumn();
 }
 
 function formatEventText(string $eventType, array $payload, string $projectName, ?string $actorName, bool $includeContent = false): string
@@ -487,12 +551,25 @@ function needsSetup(): bool
 
 function getCurrentUser(): ?array
 {
+  if (!empty($GLOBALS['_tokenUser'])) {
+    return $GLOBALS['_tokenUser'];
+  }
+
   $userId = $_SESSION['user_id'] ?? null;
   if (!$userId) return null;
   $db = getDb();
-  $stmt = $db->prepare("SELECT id, name, email, role FROM users WHERE id = ?");
+  $stmt = $db->prepare("SELECT id, name, email, role, session_version FROM users WHERE id = ?");
   $stmt->execute([$userId]);
-  return $stmt->fetch() ?: null;
+  $user = $stmt->fetch();
+  if (!$user) return null;
+
+  $currentVersion = (int) $user['session_version'];
+  if (!isset($_SESSION['session_version']) || (int) $_SESSION['session_version'] !== $currentVersion) {
+    unset($_SESSION['user_id'], $_SESSION['session_version'], $_SESSION['password_reset_required'], $_SESSION['password_reset_user_id']);
+    return null;
+  }
+  unset($user['session_version']);
+  return $user;
 }
 
 function isAuthenticated(): bool
@@ -656,15 +733,113 @@ function formatWebhookPayload(string $hookType, string $eventType, array $payloa
   };
 }
 
+function isBlockedWebhookIp(string $ip): bool
+{
+  if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+    return true;
+  }
+
+  if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+    $n = ip2long($ip);
+    $blockedRanges = [
+      ['100.64.0.0', '100.127.255.255'],   // CGNAT
+      ['198.18.0.0', '198.19.255.255'],    // benchmarking
+      ['192.0.0.0', '192.0.0.255'],
+      ['192.0.2.0', '192.0.2.255'],
+      ['198.51.100.0', '198.51.100.255'],
+      ['203.0.113.0', '203.0.113.255'],
+      ['224.0.0.0', '255.255.255.255'],    // multicast/reserved/broadcast
+    ];
+    foreach ($blockedRanges as [$from, $to]) {
+      if ($n >= ip2long($from) && $n <= ip2long($to)) return true;
+    }
+    return false;
+  }
+
+  $lower = strtolower($ip);
+  foreach (['::1', '::', 'fc', 'fd', 'fe8', 'fe9', 'fea', 'feb', 'fec', 'fed', 'fee', 'fef', '2001:0:', '2001:db8:', '2002:', '64:ff9b:', '::ffff:'] as $prefix) {
+    if (str_starts_with($lower, $prefix)) return true;
+  }
+  return false;
+}
+
+function resolveWebhookTarget(string $url): ?array
+{
+  $parts = parse_url(trim($url));
+  if (!$parts || empty($parts['scheme']) || empty($parts['host'])) return null;
+  $scheme = strtolower($parts['scheme']);
+  if (!in_array($scheme, ['http', 'https'], true)) return null;
+  if (isset($parts['user']) || isset($parts['pass'])) return null;
+
+  $host = trim($parts['host'], '[]');
+  if ($host === '' || str_contains($host, "\0")) return null;
+  if (preg_match('/^\d+$/', $host) || preg_match('/^0x[0-9a-f]+$/i', $host)) return null;
+
+  $ips = [];
+  if (filter_var($host, FILTER_VALIDATE_IP)) {
+    $ips[] = $host;
+  } else {
+    $v4 = gethostbynamel($host);
+    if (is_array($v4)) $ips = array_merge($ips, $v4);
+    $v6 = @dns_get_record($host, DNS_AAAA);
+    if (is_array($v6)) {
+      foreach ($v6 as $record) {
+        if (!empty($record['ipv6'])) $ips[] = $record['ipv6'];
+      }
+    }
+  }
+  if (!$ips) return null;
+
+  $ips = array_values(array_unique($ips));
+  foreach ($ips as $ip) {
+    if (isBlockedWebhookIp($ip)) return null;
+  }
+
+  $port = isset($parts['port']) ? (int) $parts['port'] : ($scheme === 'https' ? 443 : 80);
+  if ($port < 1 || $port > 65535) return null;
+
+  return ['host' => $host, 'port' => $port, 'ip' => $ips[0], 'url' => $url];
+}
+
+function isSafeWebhookUrl(string $url): bool
+{
+  return resolveWebhookTarget($url) !== null;
+}
+
 function sendWebhook(string $url, string $body, string $type): void
 {
-  $headers = ['Content-Type: application/json'];
+  $target = resolveWebhookTarget($url);
+  if (!$target) return;
+
+  if (function_exists('curl_init')) {
+    $ch = curl_init($url);
+    $options = [
+      CURLOPT_POST => true,
+      CURLOPT_POSTFIELDS => $body,
+      CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+      CURLOPT_RETURNTRANSFER => true,
+      CURLOPT_FOLLOWLOCATION => false,
+      CURLOPT_CONNECTTIMEOUT => 5,
+      CURLOPT_TIMEOUT => 5,
+      CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+    ];
+    if (!filter_var($target['host'], FILTER_VALIDATE_IP)) {
+      $options[CURLOPT_RESOLVE] = [$target['host'] . ':' . $target['port'] . ':' . $target['ip']];
+    }
+    curl_setopt_array($ch, $options);
+    curl_exec($ch);
+    curl_close($ch);
+    return;
+  }
+
   $ctx = stream_context_create(['http' => [
     'method' => 'POST',
-    'header' => implode("\r\n", $headers),
+    'header' => 'Content-Type: application/json',
     'content' => $body,
     'timeout' => 5,
     'ignore_errors' => true,
+    'follow_location' => 0,
+    'max_redirects' => 0,
   ]]);
   @file_get_contents($url, false, $ctx);
 }
@@ -709,6 +884,7 @@ initDatabase();
 
 // Bearer token authentication (API tokens)
 $_tokenAuth = false;
+$GLOBALS['_tokenUser'] = null;
 $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 if (str_starts_with($authHeader, 'Bearer ')) {
   $rawToken = substr($authHeader, 7);
@@ -718,7 +894,13 @@ if (str_starts_with($authHeader, 'Bearer ')) {
   $stmt->execute([$hash]);
   $tokenRow = $stmt->fetch();
   if ($tokenRow) {
-    $_SESSION['user_id'] = $tokenRow['user_id'];
+    $userStmt = $db->prepare("SELECT id, name, email, role FROM users WHERE id = ?");
+    $userStmt->execute([$tokenRow['user_id']]);
+    $tokenUser = $userStmt->fetch();
+    if (!$tokenUser) {
+      jsonResponse(['error' => 'Invalid API token'], 401);
+    }
+    $GLOBALS['_tokenUser'] = $tokenUser;
     $_tokenAuth = true;
     $db->prepare("UPDATE api_tokens SET last_used_at = datetime('now') WHERE token_hash = ?")->execute([$hash]);
   } else {
@@ -914,6 +1096,7 @@ function apiAuthSetup(): void
 
   session_regenerate_id(true);
   $_SESSION['user_id'] = $userId;
+  $_SESSION['session_version'] = 0;
   $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
 
   jsonResponse(['ok' => true, 'csrf_token' => $_SESSION['csrf_token'], 'recovery_key' => $recoveryKey]);
@@ -924,17 +1107,23 @@ function getClientIp(): string
   return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 }
 
-function checkRateLimit(): void
+function checkRateLimit(string $email = ''): void
 {
   $ip = getClientIp();
+  $email = strtolower(trim($email));
   $db = getDb();
   $window = 15; // minutes
   $maxAttempts = 15;
 
   $db->prepare("DELETE FROM login_attempts WHERE attempted_at < datetime('now', ?)")->execute(["-$window minutes"]);
 
-  $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM login_attempts WHERE ip = ? AND attempted_at > datetime('now', ?)");
-  $stmt->execute([$ip, "-$window minutes"]);
+  if ($email !== '') {
+    $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM login_attempts WHERE attempted_at > datetime('now', ?) AND (ip = ? OR email = ?)");
+    $stmt->execute(["-$window minutes", $ip, $email]);
+  } else {
+    $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM login_attempts WHERE ip = ? AND attempted_at > datetime('now', ?)");
+    $stmt->execute([$ip, "-$window minutes"]);
+  }
   $count = (int) $stmt->fetch()['cnt'];
 
   if ($count >= $maxAttempts) {
@@ -942,16 +1131,23 @@ function checkRateLimit(): void
   }
 }
 
-function recordFailedAttempt(): void
+function recordFailedAttempt(string $email = ''): void
 {
   $db = getDb();
-  $db->prepare("INSERT INTO login_attempts (ip) VALUES (?)")->execute([getClientIp()]);
+  $db->prepare("INSERT INTO login_attempts (ip, email) VALUES (?, ?)")
+    ->execute([getClientIp(), strtolower(trim($email))]);
 }
 
-function clearAttempts(): void
+function clearAttempts(string $email = ''): void
 {
   $db = getDb();
-  $db->prepare("DELETE FROM login_attempts WHERE ip = ?")->execute([getClientIp()]);
+  $email = strtolower(trim($email));
+  if ($email !== '') {
+    $db->prepare("DELETE FROM login_attempts WHERE email = ? OR (ip = ? AND (email IS NULL OR email = ''))")
+      ->execute([$email, getClientIp()]);
+  } else {
+    $db->prepare("DELETE FROM login_attempts WHERE ip = ?")->execute([getClientIp()]);
+  }
 }
 
 function apiAuthLogin(): void
@@ -969,37 +1165,43 @@ function apiAuthLogin(): void
     jsonResponse(['error' => 'Email and password are required'], 400);
   }
 
-  checkRateLimit();
+  unset($_SESSION['password_reset_required'], $_SESSION['password_reset_user_id']);
+  checkRateLimit($email);
 
   $db = getDb();
-  $stmt = $db->prepare("SELECT id, password_hash, recovery_key_hash FROM users WHERE email = ?");
+  $stmt = $db->prepare("SELECT id, password_hash, recovery_key_hash, session_version FROM users WHERE email = ?");
   $stmt->execute([$email]);
   $user = $stmt->fetch();
 
   if (!$user) {
-    recordFailedAttempt();
+    recordFailedAttempt($email);
     jsonResponse(['error' => 'Invalid email or password'], 403);
   }
 
   $response = ['ok' => true];
   $passwordResetRequired = false;
+  $sessionVersion = null;
 
   if ($recoveryKey) {
     $inputHash = hash('sha256', str_replace('-', '', strtolower(trim($recoveryKey))));
     if (!$user['recovery_key_hash'] || !hash_equals($user['recovery_key_hash'], $inputHash)) {
-      recordFailedAttempt();
+      recordFailedAttempt($email);
       jsonResponse(['error' => 'Invalid recovery key'], 403);
     }
     $response['recovery_key'] = rotateRecoveryKey($user['id']);
     $passwordResetRequired = true;
+    $sessionVersion = invalidateUserSessions((int) $user['id']);
+    $db->prepare("DELETE FROM api_tokens WHERE user_id = ?")->execute([$user['id']]);
   } else {
     if (!password_verify($password, $user['password_hash'])) {
       $candidateHash = hash('sha256', str_replace('-', '', strtolower(trim($password))));
       if ($user['recovery_key_hash'] && hash_equals($user['recovery_key_hash'], $candidateHash)) {
         $response['recovery_key'] = rotateRecoveryKey($user['id']);
         $passwordResetRequired = true;
+        $sessionVersion = invalidateUserSessions((int) $user['id']);
+        $db->prepare("DELETE FROM api_tokens WHERE user_id = ?")->execute([$user['id']]);
       } else {
-        recordFailedAttempt();
+        recordFailedAttempt($email);
         jsonResponse(['error' => 'Invalid email or password'], 403);
       }
     } elseif (!$user['recovery_key_hash']) {
@@ -1008,12 +1210,14 @@ function apiAuthLogin(): void
     }
   }
 
-  clearAttempts();
+  clearAttempts($email);
   session_regenerate_id(true);
   $_SESSION['user_id'] = (int) $user['id'];
+  $_SESSION['session_version'] = $sessionVersion ?? (int) $user['session_version'];
   $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
   if ($passwordResetRequired) {
     $_SESSION['password_reset_required'] = true;
+    $_SESSION['password_reset_user_id'] = (int) $user['id'];
     $response['password_reset'] = true;
   }
   $response['csrf_token'] = $_SESSION['csrf_token'];
@@ -1022,7 +1226,14 @@ function apiAuthLogin(): void
 
 function apiAuthLogout(): void
 {
-  session_destroy();
+  if (empty($GLOBALS['_tokenAuth'])) {
+    $_SESSION = [];
+    if (ini_get('session.use_cookies')) {
+      $params = session_get_cookie_params();
+      setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
+    }
+    session_destroy();
+  }
   jsonResponse(['ok' => true]);
 }
 
@@ -1077,12 +1288,15 @@ function apiAccountUpdate(): void
     jsonResponse(['error' => 'Email already in use'], 400);
   }
 
+  $response = ['ok' => true];
+  $isSessionUser = empty($GLOBALS['_tokenAuth']) && (int) ($_SESSION['user_id'] ?? 0) === (int) $user['id'];
+
   if ($password) {
     if (strlen($password) < 6) {
       jsonResponse(['error' => 'New password must be at least 6 characters'], 400);
     }
-    if (!$currentPassword && !empty($_SESSION['password_reset_required'])) {
-      // Recovery-key login: allow password change without current password
+    if (!$currentPassword && $isSessionUser && !empty($_SESSION['password_reset_required']) && (int) ($_SESSION['password_reset_user_id'] ?? 0) === (int) $user['id']) {
+      // Recovery-key login for this user: allow password change without current password
     } else {
       $stmt = $db->prepare("SELECT password_hash FROM users WHERE id = ?");
       $stmt->execute([$user['id']]);
@@ -1092,8 +1306,17 @@ function apiAccountUpdate(): void
       }
     }
     $hash = password_hash($password, PASSWORD_BCRYPT);
-    $db->prepare("UPDATE users SET name = ?, email = ?, password_hash = ? WHERE id = ?")->execute([$name, $email, $hash, $user['id']]);
-    unset($_SESSION['password_reset_required']);
+    $db->prepare("UPDATE users SET name = ?, email = ?, password_hash = ?, session_version = session_version + 1 WHERE id = ?")
+      ->execute([$name, $email, $hash, $user['id']]);
+    $response['recovery_key'] = rotateRecoveryKey($user['id']);
+    $db->prepare("DELETE FROM api_tokens WHERE user_id = ?")->execute([$user['id']]);
+    if ($isSessionUser) {
+      $versionStmt = $db->prepare("SELECT session_version FROM users WHERE id = ?");
+      $versionStmt->execute([$user['id']]);
+      session_regenerate_id(true);
+      $_SESSION['session_version'] = (int) $versionStmt->fetchColumn();
+      unset($_SESSION['password_reset_required'], $_SESSION['password_reset_user_id']);
+    }
     $projects = $db->prepare("SELECT project_id FROM project_owners WHERE user_id = ?");
     $projects->execute([$user['id']]);
     foreach ($projects->fetchAll() as $p) {
@@ -1103,7 +1326,7 @@ function apiAccountUpdate(): void
     $db->prepare("UPDATE users SET name = ?, email = ? WHERE id = ?")->execute([$name, $email, $user['id']]);
   }
 
-  jsonResponse(['ok' => true]);
+  jsonResponse($response);
 }
 
 function apiRegenerateRecoveryKey(): void
@@ -1278,6 +1501,7 @@ function apiTeamUpdateRole(): void
 function apiTeamResetPassword(): void
 {
   requireAdmin();
+  $user = getCurrentUser();
   $input = getInput();
   $id = (int) ($input['id'] ?? 0);
   $password = $input['password'] ?? '';
@@ -1289,7 +1513,18 @@ function apiTeamResetPassword(): void
 
   $db = getDb();
   $hash = password_hash($password, PASSWORD_BCRYPT);
-  $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?")->execute([$hash, $id]);
+  $db->prepare("UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?")
+    ->execute([$hash, $id]);
+  clearRecoveryKey($id);
+  $db->prepare("DELETE FROM api_tokens WHERE user_id = ?")->execute([$id]);
+
+  if ($user && empty($GLOBALS['_tokenAuth']) && (int) ($_SESSION['user_id'] ?? 0) === $id) {
+    $versionStmt = $db->prepare("SELECT session_version FROM users WHERE id = ?");
+    $versionStmt->execute([$id]);
+    session_regenerate_id(true);
+    $_SESSION['session_version'] = (int) $versionStmt->fetchColumn();
+    unset($_SESSION['password_reset_required'], $_SESSION['password_reset_user_id']);
+  }
   jsonResponse(['ok' => true]);
 }
 
@@ -1519,8 +1754,10 @@ function apiUpdateColumn(): void
     $params[] = trim($input['name']);
   }
   if (isset($input['color'])) {
+    $color = trim((string) $input['color']);
+    if (!isValidColor($color)) jsonResponse(['error' => 'Invalid color'], 400);
     $fields[] = 'color = ?';
-    $params[] = $input['color'];
+    $params[] = $color;
   }
 
   if ($fields) {
@@ -1650,6 +1887,12 @@ function apiListCards(): void
   $user = getCurrentUser();
   $userId = $user ? $user['id'] : 0;
   $guest = getGuestInfo($projectId);
+  $guestCanViewTime = false;
+  if (!$user && $guest) {
+    $timeFlag = $db->prepare("SELECT guest_can_view_time FROM projects WHERE id = ?");
+    $timeFlag->execute([$projectId]);
+    $guestCanViewTime = (bool) $timeFlag->fetchColumn();
+  }
 
   foreach ($cards as &$card) {
     $tagStmt = $db->prepare("SELECT t.* FROM tags t JOIN card_tags ct ON t.id = ct.tag_id WHERE ct.card_id = ?");
@@ -1664,9 +1907,11 @@ function apiListCards(): void
     $commentStmt->execute([$card['id']]);
     $card['comment_count'] = (int) $commentStmt->fetch()['cnt'];
 
-    $timeStmt = $db->prepare("SELECT COALESCE(SUM(minutes), 0) as total FROM time_entries WHERE card_id = ?");
-    $timeStmt->execute([$card['id']]);
-    $card['total_minutes'] = (int) $timeStmt->fetch()['total'];
+    if ($user || $guestCanViewTime) {
+      $timeStmt = $db->prepare("SELECT COALESCE(SUM(minutes), 0) as total FROM time_entries WHERE card_id = ?");
+      $timeStmt->execute([$card['id']]);
+      $card['total_minutes'] = (int) $timeStmt->fetch()['total'];
+    }
 
     $wcStmt = $db->prepare("SELECT (SELECT COUNT(*) FROM watchers WHERE project_id = ? AND card_id = ?) + (SELECT COUNT(*) FROM guest_watchers WHERE project_id = ? AND card_id = ?) as cnt");
     $wcStmt->execute([$projectId, $card['id'], $projectId, $card['id']]);
@@ -1827,6 +2072,10 @@ function apiMoveCard(): void
   $row = $card->fetch();
   if (!$row) jsonResponse(['error' => 'Not found'], 404);
 
+  $target = $db->prepare("SELECT id FROM columns_ WHERE id = ? AND project_id = ?");
+  $target->execute([$newColumnId, $row['project_id']]);
+  if (!$target->fetch()) jsonResponse(['error' => 'Column not found'], 404);
+
   if (!isAuthenticated()) {
     $projectId = $row['project_id'];
     if (!isGuest($projectId)) {
@@ -1889,13 +2138,27 @@ function apiCreateTag(): void
   $input = getInput();
   $projectId = $input['project_id'] ?? '';
   $name = trim($input['name'] ?? '');
-  $color = $input['color'] ?? '#5e81ac';
+  $color = trim((string) ($input['color'] ?? '#5e81ac'));
   $cardId = (int) ($input['card_id'] ?? 0);
 
   if (!$projectId || !$name) jsonResponse(['error' => 'Missing fields'], 400);
+  if (!isValidColor($color)) jsonResponse(['error' => 'Invalid color'], 400);
   requireAuth();
 
   $db = getDb();
+  $project = $db->prepare("SELECT 1 FROM projects WHERE id = ?");
+  $project->execute([$projectId]);
+  if (!$project->fetch()) jsonResponse(['error' => 'Project not found'], 404);
+
+  if ($cardId) {
+    $card = $db->prepare("SELECT col.project_id FROM cards c JOIN columns_ col ON c.column_id = col.id WHERE c.id = ?");
+    $card->execute([$cardId]);
+    $cardRow = $card->fetch();
+    if (!$cardRow || $cardRow['project_id'] !== $projectId) {
+      jsonResponse(['error' => 'Card not found'], 404);
+    }
+  }
+
   $stmt = $db->prepare("INSERT INTO tags (project_id, name, color) VALUES (?, ?, ?)");
   $stmt->execute([$projectId, $name, $color]);
   $tagId = (int) $db->lastInsertId();
@@ -1938,6 +2201,13 @@ function apiToggleCardTag(): void
   $card->execute([$cardId]);
   $row = $card->fetch();
   if (!$row) jsonResponse(['error' => 'Not found'], 404);
+
+  $tag = $db->prepare("SELECT project_id FROM tags WHERE id = ?");
+  $tag->execute([$tagId]);
+  $tagRow = $tag->fetch();
+  if (!$tagRow || $tagRow['project_id'] !== $row['project_id']) {
+    jsonResponse(['error' => 'Tag not found'], 404);
+  }
 
   if (!isAuthenticated()) {
     $projectId = $row['project_id'];
@@ -2168,25 +2438,28 @@ function apiUploadAttachment(): void
     jsonResponse(['error' => 'Upload failed (error ' . $file['error'] . ')'], 400);
   }
 
-  $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-  $blocked = ['php', 'phtml', 'phar', 'html', 'htm', 'xhtml', 'shtml', 'js', 'sh', 'bat', 'exe'];
-  if (in_array($ext, $blocked)) {
+  $originalName = is_string($file['name'] ?? null) ? $file['name'] : '';
+  $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+  if ($ext === '' || !in_array($ext, ALLOWED_UPLOAD_EXTENSIONS, true)) {
     jsonResponse(['error' => 'File type not allowed'], 400);
+  }
+  if (in_array($ext, IMAGE_EXTENSIONS, true) && @getimagesize($file['tmp_name']) === false) {
+    jsonResponse(['error' => 'Invalid image file'], 400);
   }
 
   $projectId = $row['project_id'];
   $dir = UPLOAD_DIR . "/$projectId/$cardId";
   if (!is_dir($dir)) mkdir($dir, 0755, true);
 
-  $filename = time() . '_' . preg_replace('/[^a-z0-9._-]/i', '', $file['name']);
+  $filename = time() . '_' . preg_replace('/[^a-z0-9._-]/i', '', $originalName);
   $relativePath = "$projectId/$cardId/$filename";
 
   move_uploaded_file($file['tmp_name'], "$dir/$filename");
 
   $stmt = $db->prepare("INSERT INTO attachments (card_id, filename, path) VALUES (?, ?, ?)");
-  $stmt->execute([$cardId, $file['name'], $relativePath]);
+  $stmt->execute([$cardId, $originalName, $relativePath]);
 
-  jsonResponse(['id' => (int) $db->lastInsertId(), 'filename' => $file['name'], 'path' => $relativePath]);
+  jsonResponse(['id' => (int) $db->lastInsertId(), 'filename' => $originalName, 'path' => $relativePath]);
 }
 
 function apiDeleteAttachment(): void
@@ -2401,6 +2674,7 @@ function apiCreateWebhook(): void
   $messageTemplate = $input['message_template'] ?? null;
 
   if (!$projectId) jsonResponse(['error' => 'Missing fields'], 400);
+  requireOwner($projectId);
   if (!in_array($type, ['generic', 'slack', 'telegram'])) jsonResponse(['error' => 'Invalid type'], 400);
 
   if ($type === 'telegram') {
@@ -2409,10 +2683,10 @@ function apiCreateWebhook(): void
     $url = "https://api.telegram.org/bot{$botToken}/sendMessage";
   } else {
     if (!$url) jsonResponse(['error' => 'URL is required'], 400);
-    if (!filter_var($url, FILTER_VALIDATE_URL)) jsonResponse(['error' => 'Invalid URL'], 400);
+    if (!filter_var($url, FILTER_VALIDATE_URL) || !isSafeWebhookUrl($url)) {
+      jsonResponse(['error' => 'Invalid or unsafe URL'], 400);
+    }
   }
-
-  requireOwner($projectId);
 
   $db = getDb();
   $stmt = $db->prepare("INSERT INTO project_webhooks (project_id, url, type, bot_token, chat_id, message_template) VALUES (?, ?, ?, ?, ?, ?)");
@@ -2461,22 +2735,40 @@ function apiUpdateWebhook(): void
   if (!$id) jsonResponse(['error' => 'Missing id'], 400);
 
   $db = getDb();
-  $hook = $db->prepare("SELECT project_id FROM project_webhooks WHERE id = ?");
+  $hook = $db->prepare("SELECT * FROM project_webhooks WHERE id = ?");
   $hook->execute([$id]);
   $row = $hook->fetch();
   if (!$row) jsonResponse(['error' => 'Not found'], 404);
 
   requireOwner($row['project_id']);
 
-  $fields = [];
-  $params = [];
-  foreach (['url', 'type', 'bot_token', 'chat_id', 'message_template'] as $f) {
+  $allowed = ['url', 'type', 'bot_token', 'chat_id', 'message_template'];
+  $data = [];
+  foreach ($allowed as $f) {
+    $data[$f] = $row[$f];
     if (array_key_exists($f, $input)) {
-      $fields[] = "$f = ?";
-      $params[] = $input[$f] ?: null;
+      $data[$f] = is_string($input[$f]) ? $input[$f] : null;
     }
   }
-  if (!$fields) jsonResponse(['error' => 'No fields to update'], 400);
+
+  if (!in_array($data['type'], ['generic', 'slack', 'telegram'], true)) {
+    jsonResponse(['error' => 'Invalid type'], 400);
+  }
+  if ($data['type'] === 'telegram') {
+    if (empty($data['bot_token']) || empty($data['chat_id'])) {
+      jsonResponse(['error' => 'Bot token and chat ID are required for Telegram'], 400);
+    }
+    $data['url'] = "https://api.telegram.org/bot{$data['bot_token']}/sendMessage";
+  } elseif (empty($data['url']) || !filter_var($data['url'], FILTER_VALIDATE_URL) || !isSafeWebhookUrl($data['url'])) {
+    jsonResponse(['error' => 'Invalid or unsafe URL'], 400);
+  }
+
+  $fields = [];
+  $params = [];
+  foreach ($allowed as $f) {
+    $fields[] = "$f = ?";
+    $params[] = $data[$f] !== '' ? $data[$f] : null;
+  }
 
   $params[] = $id;
   $db->prepare("UPDATE project_webhooks SET " . implode(', ', $fields) . " WHERE id = ?")->execute($params);
@@ -2730,6 +3022,9 @@ function verifyCronAuth(): void
       jsonResponse(['error' => 'Invalid cron token'], 403);
     }
   } else {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+      jsonResponse(['error' => 'POST required'], 405);
+    }
     requireAdmin();
   }
 }
@@ -2968,6 +3263,26 @@ function endRunningTimeEntries(int $cardId, string $at = '', ?int $tzOffset = nu
   return count($rows);
 }
 
+function isValidDateYmd(string $date): bool
+{
+  if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m)) return false;
+  return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+}
+
+function isValidHhMm(string $time): bool
+{
+  return (bool) preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time);
+}
+
+function csvField(mixed $value): string
+{
+  $value = (string) $value;
+  if ($value !== '' && (preg_match('/^[=+\-@\t\r]/', $value) || preg_match('/^\s+[=+\-@]/', $value))) {
+    $value = "'" . $value;
+  }
+  return '"' . str_replace('"', '""', $value) . '"';
+}
+
 function apiCreateTimeEntry(): void
 {
   requireAuth();
@@ -2985,7 +3300,9 @@ function apiCreateTimeEntry(): void
     : null;
 
   if (!$cardId) jsonResponse(['error' => 'card_id is required'], 400);
-  if (!$workedAt) jsonResponse(['error' => 'worked_at is required'], 400);
+  if (!isValidDateYmd($workedAt)) jsonResponse(['error' => 'worked_at must be a valid YYYY-MM-DD date'], 400);
+  if ($startTime !== '' && !isValidHhMm($startTime)) jsonResponse(['error' => 'start_time must be HH:MM'], 400);
+  if ($endTime !== '' && !isValidHhMm($endTime)) jsonResponse(['error' => 'end_time must be HH:MM'], 400);
 
   if ($startTime && $endTime) {
     $minutes = calcMinutesFromTimes($startTime, $endTime);
@@ -3029,8 +3346,14 @@ function apiUpdateTimeEntry(): void
   $endTime = array_key_exists('end_time', $input) ? trim($input['end_time']) : $entry['end_time'];
   $note = array_key_exists('note', $input) ? trim($input['note']) : $entry['note'];
   $workedAt = array_key_exists('worked_at', $input) ? trim($input['worked_at']) : $entry['worked_at'];
-  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $workedAt)) {
-    jsonResponse(['error' => 'worked_at must be YYYY-MM-DD'], 400);
+  if (!isValidDateYmd((string) $workedAt)) {
+    jsonResponse(['error' => 'worked_at must be a valid YYYY-MM-DD date'], 400);
+  }
+  if ($startTime !== null && $startTime !== '' && !isValidHhMm((string) $startTime)) {
+    jsonResponse(['error' => 'start_time must be HH:MM'], 400);
+  }
+  if ($endTime !== null && $endTime !== '' && !isValidHhMm((string) $endTime)) {
+    jsonResponse(['error' => 'end_time must be HH:MM'], 400);
   }
   $minutes = (int) $entry['minutes'];
 
@@ -3152,7 +3475,11 @@ function apiTimeReport(): void
     header('Content-Disposition: attachment; filename="time-report.csv"');
     echo "Card,Author,Minutes,Date,Note\n";
     foreach ($rows as $r) {
-      echo '"' . str_replace('"', '""', $r['card_title']) . '","' . str_replace('"', '""', $r['author_name']) . '",' . $r['minutes'] . ',' . $r['worked_at'] . ',"' . str_replace('"', '""', $r['note']) . "\"\n";
+      echo csvField($r['card_title']) . ','
+        . csvField($r['author_name']) . ','
+        . csvField($r['minutes']) . ','
+        . csvField($r['worked_at']) . ','
+        . csvField($r['note']) . "\n";
     }
     exit;
   }
@@ -3314,6 +3641,8 @@ function sendSmtpEmail(array $smtp, string $to, string $subject, string $body): 
   }
 
   $ehloHost = $_SERVER['SERVER_NAME'] ?? $_SERVER['HTTP_HOST'] ?? 'localhost';
+  $ehloHost = preg_replace('/[^A-Za-z0-9.\-:\[\]]/', '', (string) $ehloHost);
+  if ($ehloHost === '') $ehloHost = 'localhost';
   smtpCmd($conn, "EHLO $ehloHost");
 
   if ($encryption === 'tls') {
@@ -3408,22 +3737,63 @@ function smtpCmd($conn, string $cmd): string
 // ============================================================================
 
 if (isset($_GET['file'])) {
-  $filePath = str_replace('..', '', $_GET['file']);
-  $projectId = explode('/', $filePath)[0] ?? '';
-  if ($projectId && !isAuthenticated() && !isGuest($projectId)) {
+  $requested = $_GET['file'];
+  $filePath = is_string($requested) ? ltrim($requested, '/') : '';
+  if ($filePath === '' || str_contains($filePath, "\0")) {
+    http_response_code(404);
+    exit;
+  }
+
+  $db = getDb();
+  $stmt = $db->prepare("
+        SELECT a.path, a.filename, col.project_id
+        FROM attachments a
+        JOIN cards c ON a.card_id = c.id
+        JOIN columns_ col ON c.column_id = col.id
+        WHERE a.path = ?
+    ");
+  $stmt->execute([$filePath]);
+  $attachment = $stmt->fetch();
+  if (!$attachment) {
+    http_response_code(404);
+    exit;
+  }
+
+  $projectId = $attachment['project_id'];
+  if (!isAuthenticated() && !isGuest($projectId)) {
     http_response_code(401);
     exit;
   }
-  $path = UPLOAD_DIR . '/' . $filePath;
-  if (file_exists($path)) {
-    $mime = mime_content_type($path) ?: 'application/octet-stream';
-    header('Content-Type: ' . $mime);
-    header('Content-Security-Policy: sandbox');
-    header('Cache-Control: public, max-age=86400');
-    readfile($path);
+
+  $path = realpath(UPLOAD_DIR . '/' . $attachment['path']);
+  $base = realpath(UPLOAD_DIR);
+  if (
+    !$path || !$base
+    || !str_starts_with($path, $base . DIRECTORY_SEPARATOR)
+    || !is_file($path)
+  ) {
+    http_response_code(404);
     exit;
   }
-  http_response_code(404);
+
+  $ext = strtolower(pathinfo($attachment['path'], PATHINFO_EXTENSION));
+  $inlineImages = [
+    'jpg' => 'image/jpeg',
+    'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'gif' => 'image/gif',
+    'webp' => 'image/webp',
+  ];
+  $inline = isset($inlineImages[$ext]) && @getimagesize($path) !== false;
+  $mime = $inline ? $inlineImages[$ext] : 'application/octet-stream';
+  $filename = str_replace(['"', "\r", "\n"], '', basename((string) $attachment['filename']));
+
+  header('Content-Type: ' . $mime);
+  header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $filename . '"');
+  header('Content-Length: ' . filesize($path));
+  header('Content-Security-Policy: sandbox');
+  header('Cache-Control: private, no-store');
+  readfile($path);
   exit;
 }
 
@@ -3442,14 +3812,14 @@ $isGuestRequest = isset($_GET['guest']);
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23434C5E'/><text x='16' y='22' font-family='sans-serif' font-size='14' font-weight='bold' fill='%23ECEFF4' text-anchor='middle'>T.</text></svg>">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= APP_NAME ?></title>
-  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js" integrity="sha384-HZZ/fukV+9G8gwTNjN7zQDG0Sp7MsZy5DDN6VfY3Be7V9dvQpEpR2jF2HlyFUUjU" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js" integrity="sha384-NNQgBjjuhtXzPmmy4gurS5X7P4uTt1DThyevz4Ua0IVK5+kazYQI1W27JHjbbxQz" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.2/dist/purify.min.js" integrity="sha384-8hAfZQ5Oqos5HLTHfR0sLvvwpcVI4fGhV+0Dj/HCcpkKaacivQs82XHmvLOnAhXn" crossorigin="anonymous"></script>
+  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet" integrity="sha384-ecIckRi4QlKYya/FQUbBUjS4qp65jF/J87Guw5uzTbO1C1Jfa/6kYmd6dXUF6D7i" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js" integrity="sha384-utBUCeG4SYaCm4m7GQZYr8Hy8Fpy3V4KGjBZaf4WTKOcwhCYpt/0PfeEe3HNlwx8" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js" integrity="sha384-OGauEFaI5hnS8jXK4qdSGShAUAObMBKoLXgcL1ORhRh7ulx5jPZH35qVpacIEA4Z" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js" integrity="sha384-2TroN1N6OfLQ+K4qttptnIfMREzUlMa3hW/nZqDZXv7Sm9BkESfGEupDEqCbzyRl" crossorigin="anonymous"></script>
   <style>
     :root {
       --nord0: #2e3440;
@@ -6872,9 +7242,13 @@ $isGuestRequest = isset($_GET['guest']);
             name: this.user.name,
             email: this.user.email,
             password: pw
-          }, 'POST').done(() => {
-            this.closeModal();
-            this.toast('Password updated.', 'success');
+          }, 'POST').done((res) => {
+            if (res.recovery_key) {
+              this._showRecoveryKeyModal(res.recovery_key);
+            } else {
+              this.closeModal();
+              this.toast('Password updated.', 'success');
+            }
           }).fail(xhr => {
             this.toast(xhr.responseJSON?.error || 'Failed');
           });
@@ -6974,7 +7348,7 @@ $isGuestRequest = isset($_GET['guest']);
             const unread = p.unread_comments || 0;
             const badgeText = unread > 9 ? '9+' : unread;
             const badgeHtml = unread ? `<span class="badge badge-muted">${badgeText}</span>` : '';
-            const deleteBtn = p.is_owner ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();App.confirmDeleteProject('${p.id}','${this.escAttr(p.name)}')">Delete</button>` : '';
+            const deleteBtn = p.is_owner ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();App.confirmDeleteProject('${p.id}',${this.jsArg(p.name)})">Delete</button>` : '';
             const watchIcon = p.is_watching ? '<svg viewBox="0 0 24 24" width="14" height="14" stroke="var(--primary)" fill="none" stroke-width="2" title="Watching"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '';
             return `<div class="project-card" data-id="${p.id}" onclick="App.openProject('${p.id}')">
                 <span class="project-index">${i + 1}</span>
@@ -7238,7 +7612,7 @@ $isGuestRequest = isset($_GET['guest']);
                 <div class="column${isFixed ? ' column-fixed' : ''}" data-id="${col.id}">
                     <div class="column-header"${isFixed ? '' : ' style="cursor:grab"'}>
                         <h3>
-                            <span class="column-dot" style="background:${col.color}"></span>
+                            <span class="column-dot" style="background:${this.safeColor(col.color, '#4c566a')}"></span>
                             <span class="column-name"${!this.isGuest && !isFixed ? ` ondblclick="App.editColumnName(${col.id}, this)"` : ''}>${this.esc(col.name)}</span>
                             <span class="column-count">${colCards.length}</span>
                         </h3>
@@ -7282,11 +7656,11 @@ $isGuestRequest = isset($_GET['guest']);
 
         renderCard(card) {
           const tagsHtml = (card.tags || []).map(t =>
-            `<span class="tag" style="background:${t.color}">${this.esc(t.name)}</span>`
+            `<span class="tag" style="background:${this.safeColor(t.color)}">${this.esc(t.name)}</span>`
           ).join('');
-          const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+          const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
           const coverAtt = (card.attachments || []).find(a => imageExts.includes(a.filename.split('.').pop().toLowerCase()));
-          const coverHtml = coverAtt ? `<img src="?file=${encodeURIComponent(coverAtt.path)}" class="cover-image">` : '';
+          const coverHtml = coverAtt ? `<img src="${this.escAttr(this.fileUrl(coverAtt.path))}" class="cover-image">` : '';
           const hasAtt = (card.attachments || []).length > 0;
           const commentCount = card.comment_count || 0;
           const unread = this.unreadCounts[card.id] || 0;
@@ -7477,7 +7851,7 @@ $isGuestRequest = isset($_GET['guest']);
           const count = this.cards.filter(c => c.column_id == id).length;
           const label = count === 1 ? 'card' : 'cards';
           this.openModal('Move all cards', `
-            <div class="form-group"><label>From</label><input type="text" value="${this.esc(col.name)}" disabled></div>
+            <div class="form-group"><label>From</label><input type="text" value="${this.escAttr(col.name)}" disabled></div>
             <div class="form-group"><label>To</label><select id="move-all-target" class="select-full">${options}</select></div>
             <p class="text-light">${count} ${label} will move to the top of the target column.</p>
         `, `<button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button> <button class="btn btn-primary" onclick="App.moveAllCards(${id})">Move ${count} ${label}</button>`);
@@ -7549,19 +7923,19 @@ $isGuestRequest = isset($_GET['guest']);
           }), this.currentProject.id) : '<em class="text-no-desc">No description</em>';
           const assignedTags = (card.tags || []);
           const tagsHtml = assignedTags.map(t =>
-            `<span class="tag" style="background:${t.color};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
+            `<span class="tag" style="background:${this.safeColor(t.color)};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
           ).join('');
 
-          const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+          const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
           const attHtml = (card.attachments || []).map(a => {
             const isImage = imageExts.includes(a.filename.split('.').pop().toLowerCase());
             if (isImage) {
-              return `<div class="attachment-item" onclick="event.stopPropagation();App.previewImage('?file=${encodeURIComponent(a.path)}')">
-                    <img src="?file=${encodeURIComponent(a.path)}" alt="${this.esc(a.filename)}">
+              return `<div class="attachment-item" onclick="event.stopPropagation();App.previewImage(${this.jsArg(this.fileUrl(a.path))})">
+                    <img src="${this.escAttr(this.fileUrl(a.path))}" alt="${this.escAttr(a.filename)}">
                     ${!this.isGuest ? `<button class="attachment-delete" onclick="event.stopPropagation();App.deleteAttachment(${a.id},${cardId})">&times;</button>` : ''}
                 </div>`;
             }
-            return `<a href="?file=${encodeURIComponent(a.path)}" download="${this.esc(a.filename)}" class="attachment-item attachment-file" onclick="event.stopPropagation()">
+            return `<a href="${this.escAttr(this.fileUrl(a.path))}" download="${this.escAttr(a.filename)}" class="attachment-item attachment-file" onclick="event.stopPropagation()">
                 <span class="attachment-file-icon">&#128196;</span>
                 <span class="attachment-file-name">${this.esc(a.filename)}</span>
                 ${!this.isGuest ? `<button class="attachment-delete" onclick="event.stopPropagation();event.preventDefault();App.deleteAttachment(${a.id},${cardId})">&times;</button>` : ''}
@@ -7757,7 +8131,7 @@ $isGuestRequest = isset($_GET['guest']);
           const content = document.getElementById(`desc-content-${cardId}`);
           if (!content) return;
           const card = this.cards.find(c => c.id == cardId);
-          const html = card.description ? marked.parse(card.description) : '';
+          const html = card.description ? DOMPurify.sanitize(marked.parse(card.description)) : '';
           this._editDescOriginalHtml = content.outerHTML;
           const editBtn = document.getElementById(`desc-edit-btn-${cardId}`);
           if (editBtn) editBtn.style.display = 'none';
@@ -7859,10 +8233,10 @@ $isGuestRequest = isset($_GET['guest']);
           const assigned = this.tags.filter(t => assignedIds.includes(t.id));
 
           const assignedHtml = assigned.map(t =>
-            `<span class="tag" style="background:${t.color};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)} &times;</span>`
+            `<span class="tag" style="background:${this.safeColor(t.color)};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)} &times;</span>`
           ).join(' ');
           const availableHtml = available.map(t =>
-            `<span class="tag" style="background:${t.color};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
+            `<span class="tag" style="background:${this.safeColor(t.color)};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
           ).join(' ');
 
           const colors = ['#bf616a', '#d08770', '#ebcb8b', '#a3be8c', '#5e81ac', '#b48ead', '#88c0d0'];
@@ -7974,7 +8348,7 @@ $isGuestRequest = isset($_GET['guest']);
             return $(this).find('[onclick*="editComment(' + commentId + '"]').length > 0;
           });
           const raw = decodeURIComponent(commentEl.find('.comment-body').attr('data-raw') || '');
-          const html = raw ? marked.parse(raw) : '';
+          const html = raw ? DOMPurify.sanitize(marked.parse(raw)) : '';
           this.openModal('Edit Comment', `
             <div class="form-group"><div class="quill-wrap"><div id="edit-comment-editor"></div></div></div>
         `, `
@@ -8076,7 +8450,7 @@ $isGuestRequest = isset($_GET['guest']);
                         <strong>${this.esc(t.name)}</strong>
                         <span class="text-muted text-sm ml-2">Created ${t.created_at}${t.last_used_at ? ' · Last used ' + t.last_used_at : ''}</span>
                     </div>
-                    <button type="button" class="btn btn-sm btn-danger" onclick="App.revokeApiToken(${t.id},'${this.escAttr(t.name)}')">Revoke</button>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="App.revokeApiToken(${t.id},${this.jsArg(t.name)})">Revoke</button>
                 </div>
             `).join('') : '<p class="text-muted">No API tokens yet.</p>';
             this.openModal('My Account', `
@@ -8088,10 +8462,10 @@ $isGuestRequest = isset($_GET['guest']);
                 </div>
                     <div id="atab-general" class="settings-tab-content">
                         <div class="form-group"><label>Name</label>
-                            <input type="text" id="account-name" value="${this.esc(this.user.name)}">
+                            <input type="text" id="account-name" value="${this.escAttr(this.user.name)}">
                         </div>
                         <div class="form-group"><label>Email</label>
-                            <input type="text" id="account-email" value="${this.esc(this.user.email)}">
+                            <input type="text" id="account-email" value="${this.escAttr(this.user.email)}">
                         </div>
                         <div class="card-detail-section mt-4"><h4>Change Password</h4>
                             <div class="form-group"><label>Current Password</label>
@@ -8109,7 +8483,7 @@ $isGuestRequest = isset($_GET['guest']);
                     <div id="atab-notifications" class="settings-tab-content hidden">
                         <div class="card-detail-section"><h4>Notification Preferences</h4>
                             <div class="form-group"><label>Notification Email</label>
-                                <input type="email" id="notif-email" value="${this.esc(notif.email || '')}" placeholder="Leave blank to use account email">
+                                <input type="email" id="notif-email" value="${this.escAttr(notif.email || '')}" placeholder="Leave blank to use account email">
                             </div>
                             <div class="form-group"><label>Delivery</label>
                                 <select id="notif-delivery" class="select-full">
@@ -8172,14 +8546,18 @@ $isGuestRequest = isset($_GET['guest']);
           const notifEmail = $('#notif-email').val().trim();
           const notifDelivery = $('#notif-delivery').val();
 
-          this.api('account_update', payload, 'POST').done(() => {
+          this.api('account_update', payload, 'POST').done((res) => {
             this.user.name = name;
             this.user.email = email;
             this.api('update_notification_settings', {
               email: notifEmail,
               delivery: notifDelivery
             }, 'POST');
-            this.toast('Saved!', 'success');
+            if (res.recovery_key) {
+              this._showRecoveryKeyModal(res.recovery_key);
+            } else {
+              this.toast('Saved!', 'success');
+            }
           }).fail(xhr => {
             this.toast(xhr.responseJSON?.error || 'Failed to update');
           });
@@ -8264,17 +8642,19 @@ $isGuestRequest = isset($_GET['guest']);
               return;
             }
             const rows = entries.map(e => {
+              const start = this.esc(e.start_time || '');
+              const end = this.esc(e.end_time || '');
               const inProgress = e.start_time && !e.end_time;
               const nextDay = e.start_time && e.end_time && e.end_time < e.start_time;
               const timeCol = inProgress ?
-                `<span class="text-muted">${e.start_time} → ?</span>` :
-                (e.start_time ? `${e.start_time}→${e.end_time} (${this.formatMinutes(e.minutes)})${nextDay ? ' <span class="time-next-day" title="Ends on the next day">+1d</span>' : ''}` : `<strong>${this.formatMinutes(e.minutes)}</strong>`);
+                `<span class="text-muted">${start} → ?</span>` :
+                (e.start_time ? `${start}→${end} (${this.formatMinutes(e.minutes)})${nextDay ? ' <span class="time-next-day" title="Ends on the next day">+1d</span>' : ''}` : `<strong>${this.formatMinutes(e.minutes)}</strong>`);
               const actions = (inProgress ?
                 `<button type="button" class="btn btn-primary btn-xs" onclick="App.endTimeEntry(${e.id},${cardId})" title="End now">End</button> ` : '') +
                 `<button type="button" class="btn-icon btn-sm" onclick="App.editTimeEntry(${e.id},${cardId})" title="Edit">&#9998;</button> <button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button>`;
               return `<tr${inProgress ? ' class="in-progress"' : ''}>
                     <td>${timeCol}</td>
-                    <td>${e.worked_at}</td>
+                    <td>${this.esc(e.worked_at)}</td>
                     <td>${this.esc(e.note)}</td>
                     <td>${this.esc(e.author_name)}</td>
                     <td>${actions}</td>
@@ -8563,7 +8943,7 @@ $isGuestRequest = isset($_GET['guest']);
                 if (!grouped[e.worked_at]) grouped[e.worked_at] = 0;
                 grouped[e.worked_at] += Number(e.minutes);
               });
-              tableHtml = Object.entries(grouped).sort((a, b) => b[0].localeCompare(a[0])).map(([date, m]) => `<tr><td>${this.formatDate(date)}</td><td>${this.formatMinutesHM(m)}</td><td></td></tr>`).join('');
+              tableHtml = Object.entries(grouped).sort((a, b) => b[0].localeCompare(a[0])).map(([date, m]) => `<tr><td>${this.esc(this.formatDate(date))}</td><td>${this.formatMinutesHM(m)}</td><td></td></tr>`).join('');
             }
             const content = `
                 <div class="report-controls">
@@ -8589,7 +8969,7 @@ $isGuestRequest = isset($_GET['guest']);
                         <button class="btn btn-sm ${groupBy==='date'?'btn-primary':'btn-ghost'}" onclick="App._reportGroupBy='date';App.showTimeReport('${period}')">Date</button>
                     </div>
                 </div>
-                ${periodLabel ? `<div class="report-period-label text-sm text-muted mb-3">${periodLabel}</div>` : ''}
+                ${periodLabel ? `<div class="report-period-label text-sm text-muted mb-3">${this.esc(periodLabel)}</div>` : ''}
                 <div class="report-summary">
                     <div class="report-stat"><strong>${this.formatMinutesHM(data.total_minutes)}</strong><span>Total</span></div>
                     <div class="report-stat"><strong>${data.entry_count}</strong><span>Entries</span></div>
@@ -8600,7 +8980,9 @@ $isGuestRequest = isset($_GET['guest']);
                     <tbody>${tableHtml || '<tr><td colspan="3" class="text-muted">No time entries for this period.</td></tr>'}</tbody>
                 </table>
             `;
-            const footer = `<a class="btn btn-outline-primary" href="?action=time_report&project_id=${pid}&from=${from}&to=${to}&format=csv" target="_blank">Export CSV</a>`;
+            const csvParams = `?action=time_report&project_id=${encodeURIComponent(pid)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&format=csv`;
+            const csvUrl = this.guestToken ? `${csvParams}&guest=${encodeURIComponent(this.guestToken)}` : csvParams;
+            const footer = `<a class="btn btn-outline-primary" href="${this.escAttr(csvUrl)}" target="_blank">Export CSV</a>`;
             this.openModal('Time Report — ' + this.esc(this.currentProject.name), content, footer);
             $('.modal').addClass('modal-wide');
           });
@@ -8629,7 +9011,7 @@ $isGuestRequest = isset($_GET['guest']);
                     <div><strong>${this.esc(t.name)}</strong>
                         <span class="text-muted text-sm ml-2">Created ${t.created_at}${t.last_used_at ? ' · Last used ' + t.last_used_at : ''}</span>
                     </div>
-                    <button type="button" class="btn btn-sm btn-danger" onclick="App.revokeApiToken(${t.id},'${this.escAttr(t.name)}')">Revoke</button>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="App.revokeApiToken(${t.id},${this.jsArg(t.name)})">Revoke</button>
                 </div>
             `).join('');
             $('#api-tokens-list').html(rows || '<p class="text-muted">No API tokens yet.</p>');
@@ -8647,7 +9029,7 @@ $isGuestRequest = isset($_GET['guest']);
               const actions = isSelf ? '<span class="text-sm text-light">You</span>' : `
                     <button class="btn btn-ghost btn-sm" onclick="App.teamChangeRole(${u.id},'${u.role}')">${u.role === 'admin' ? 'Demote' : 'Promote'}</button>
                     <button class="btn btn-ghost btn-sm" onclick="App.teamResetPw(${u.id})">Reset Pwd</button>
-                    <button class="btn btn-danger btn-sm" onclick="App.teamRemove(${u.id},'${this.escAttr(u.name)}')">Remove</button>
+                    <button class="btn btn-danger btn-sm" onclick="App.teamRemove(${u.id},${this.jsArg(u.name)})">Remove</button>
                 `;
               return `<div class="row-card">
                     <div>
@@ -8777,7 +9159,7 @@ $isGuestRequest = isset($_GET['guest']);
                 <div id="tab-general" class="settings-tab-content">
                     <div class="card-detail-section"><h4>App Name</h4>
                         <div class="field-addons">
-                            <input type="text" id="app-name" placeholder="App name" value="${this.esc(this.appName)}">
+                            <input type="text" id="app-name" placeholder="App name" value="${this.escAttr(this.appName)}">
                             <button class="btn btn-primary" onclick="App.setAppName()">Save</button>
                         </div>
                     </div>
@@ -8792,22 +9174,22 @@ $isGuestRequest = isset($_GET['guest']);
                     <div class="card-detail-section"><h4>SMTP (Email Notifications)</h4>
                         <div class="grid-2">
                             <div class="form-group"><label>Host</label>
-                                <input type="text" id="smtp-host" value="${this.esc(smtp.smtp_host || '')}" placeholder="smtp.example.com">
+                                <input type="text" id="smtp-host" value="${this.escAttr(smtp.smtp_host || '')}" placeholder="smtp.example.com">
                             </div>
                             <div class="form-group"><label>Port</label>
                                 <input type="text" id="smtp-port" value="${smtp.smtp_port || 587}" placeholder="587">
                             </div>
                             <div class="form-group"><label>Username</label>
-                                <input type="text" id="smtp-user" value="${this.esc(smtp.smtp_user || '')}" placeholder="user@example.com">
+                                <input type="text" id="smtp-user" value="${this.escAttr(smtp.smtp_user || '')}" placeholder="user@example.com">
                             </div>
                             <div class="form-group"><label>Password</label>
                                 <input type="password" id="smtp-pass" placeholder="${smtp.smtp_pass_set ? '(unchanged)' : 'SMTP password'}">
                             </div>
                             <div class="form-group"><label>From Email</label>
-                                <input type="email" id="smtp-from-email" value="${this.esc(smtp.smtp_from_email || '')}" placeholder="noreply@example.com">
+                                <input type="email" id="smtp-from-email" value="${this.escAttr(smtp.smtp_from_email || '')}" placeholder="noreply@example.com">
                             </div>
                             <div class="form-group"><label>From Name</label>
-                                <input type="text" id="smtp-from-name" value="${this.esc(smtp.smtp_from_name || '')}" placeholder="Tasssks">
+                                <input type="text" id="smtp-from-name" value="${this.escAttr(smtp.smtp_from_name || '')}" placeholder="Tasssks">
                             </div>
                         </div>
                         <div class="form-group"><label>Encryption</label>
@@ -8827,7 +9209,7 @@ $isGuestRequest = isset($_GET['guest']);
                     <div class="card-detail-section"><h4>Cron Token</h4>
                         <p class="text-sm text-light mb-2">Use this token to authenticate the daily digest cron job without a session.</p>
                         <div class="field-addons">
-                            <input type="text" id="cron-token" value="${this.esc(smtp.cron_token || '')}" readonly class="mono text-sm">
+                            <input type="text" id="cron-token" value="${this.escAttr(smtp.cron_token || '')}" readonly class="mono text-sm">
                             <button class="btn btn-ghost" onclick="App.generateCronToken()">Generate</button>
                         </div>
                         <p class="text-xs text-light mt-2">Use with: <code>?action=send_notifications</code> and <code>?action=send_digest</code></p>
@@ -8926,7 +9308,7 @@ $isGuestRequest = isset($_GET['guest']);
               dateStyle: 'medium'
             }).format(d);
           } catch {
-            return str;
+            return '';
           }
         },
 
@@ -9016,8 +9398,8 @@ $isGuestRequest = isset($_GET['guest']);
                         <div class="text-xs text-light">${g.can_comment ? 'Can comment' : 'View only'}${g.email ? ' · ' + this.esc(g.email) : ' · no email'}</div>
                     </div>
                     <div class="flex-center gap-sm">
-                        <button class="btn btn-ghost btn-sm" onclick="App.editGuest(${g.id},'${this.esc(g.name).replace(/'/g,"\\'")}','${this.esc(g.email || '').replace(/'/g,"\\'")}')">Edit</button>
-                        <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${link}');this.textContent='Copied!'">Copy Link</button>
+                        <button class="btn btn-ghost btn-sm" onclick="App.editGuest(${g.id},${this.jsArg(g.name)},${this.jsArg(g.email || '')})">Edit</button>
+                        <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(${this.jsArg(link)});this.textContent='Copied!'">Copy Link</button>
                         <button class="btn btn-danger btn-sm" onclick="App.deleteGuest(${g.id})">Remove</button>
                     </div>
                 </div>`;
@@ -9052,13 +9434,13 @@ $isGuestRequest = isset($_GET['guest']);
                 <div id="ptab-general" class="settings-tab-content">
                     <div class="card-detail-section"><h4>Project Name</h4>
                         <div class="field-addons">
-                            <input type="text" id="project-name" value="${this.esc(this.currentProject.name)}">
+                            <input type="text" id="project-name" value="${this.escAttr(this.currentProject.name)}">
                             <button class="btn btn-primary" onclick="App.updateProjectName()">Save</button>
                         </div>
                     </div>
                     <div class="card-detail-section"><h4>Tags</h4>
                     <div class="card-tags mb-3">${this.tags.map(t => `
-                        <span class="tag" style="background:${t.color}">${this.esc(t.name)}
+                        <span class="tag" style="background:${this.safeColor(t.color)}">${this.esc(t.name)}
                             <span class="tag-delete" onclick="App.deleteTag(${t.id})">&times;</span>
                         </span>
                     `).join('') || '<em class="text-no-desc">No tags</em>'}</div>
@@ -9210,10 +9592,10 @@ $isGuestRequest = isset($_GET['guest']);
     editGuest(id, name, email) {
         this.openModal('Edit Guest', `
             <div class="form-group"><label>Name</label>
-                <input type="text" id="edit-guest-name" value="${this.esc(name)}">
+                <input type="text" id="edit-guest-name" value="${this.escAttr(name)}">
             </div>
             <div class="form-group"><label>Email (optional)</label>
-                <input type="email" id="edit-guest-email" value="${this.esc(email)}" placeholder="guest@example.com">
+                <input type="email" id="edit-guest-email" value="${this.escAttr(email)}" placeholder="guest@example.com">
             </div>
         `, `<button class="btn btn-ghost" onclick="App.showSettings('guests')">Cancel</button> <button class="btn btn-primary" onclick="App.saveGuest(${id})">Save</button>`);
     },
@@ -9696,7 +10078,7 @@ $isGuestRequest = isset($_GET['guest']);
                       const id = parseInt(t.id);
                       html += `<label class="tag-filter-row">
                         <input type="checkbox" value="${id}" ${checked.has(id) ? 'checked' : ''}>
-                        <span class="tag-dot" style="background:${t.color}"></span>
+                        <span class="tag-dot" style="background:${this.safeColor(t.color)}"></span>
                         <span>${this.esc(t.name)}</span>
                       </label>`;
                     });
@@ -9752,6 +10134,12 @@ $isGuestRequest = isset($_GET['guest']);
                     document.title = this.appName;
                   },
 
+                  fileUrl(path) {
+                    let url = `?file=${encodeURIComponent(path)}`;
+                    if (this.guestToken) url += `&guest=${encodeURIComponent(this.guestToken)}`;
+                    return url;
+                  },
+
                   formatMinutes(m) {
                     m = Math.max(0, Math.floor(m));
                     const y = Math.floor(m / 525600);
@@ -9792,7 +10180,19 @@ $isGuestRequest = isset($_GET['guest']);
                     return d.innerHTML;
                   },
                   escAttr(str) {
-                    return this.esc(str).replace(/'/g, '&#39;');
+                    return String(str ?? '')
+                      .replace(/&/g, '&amp;')
+                      .replace(/"/g, '&quot;')
+                      .replace(/'/g, '&#39;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;');
+                  },
+                  jsArg(str) {
+                    return this.escAttr(JSON.stringify(String(str ?? '')));
+                  },
+                  safeColor(value, fallback = '#5e81ac') {
+                    const color = String(value || '');
+                    return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
                   }
               };
 

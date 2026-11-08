@@ -1,8 +1,18 @@
+Options -Indexes
+
 RewriteEngine On
+
+# Uploads are served through index.php (?file=...) so project authorization applies.
+RewriteRule ^uploads/ - [F,L]
+
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^ index.php [L]
 
-<FilesMatch "\.(sqlite|sqlite3|db|sql|env|bak)$">
+<FilesMatch "\.(sqlite|sqlite3|db|sql)(-wal|-shm|-journal)?$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(env|bak)$">
     Require all denied
 </FilesMatch>
 
