@@ -122,7 +122,7 @@ Session checkpoints for continuity across sessions.
 
 - Fixed a **pre-existing** bug: dragging a card between columns never refreshed the `.column-count` badges. The card drag `onEnd` moved the DOM and sent `move_card` but never called `updateColumnCounts()`. Was broken at HEAD, unrelated to the column menu work.
 - `initSortable()` has **two** card-move handlers: a guest path (first column only, gated on `guest_can_sort_cards`) and the signed-in path (all columns). Both needed the fix. `createCard`/`deleteCard` were already fine because they call `refreshBoard()`.
-- Lesson: a lazy `/s` regex over a 9600-line single-file app matches code far past the intended block. `.*?` found the `updateColumnCounts` *definition* and the test passed for the wrong reason. Use bounded `substr()` slices, and assert handler-count == refreshing-handler-count so a future third handler cannot skip the fix.
+- Lesson: a lazy `/s` regex over a 9600-line single-file app matches code far past the intended block. `.*?` found the `updateColumnCounts` _definition_ and the test passed for the wrong reason. Use bounded `substr()` slices, and assert handler-count == refreshing-handler-count so a future third handler cannot skip the fix.
 - `showMoveAllCards` now pre-selects the **next** column along the board instead of the first, wrapping to `this.columns[0]` when the source is the last column. The first column has no menu, so the source is never index 0 and the wrap target is always valid. Test count: 583 (all passing).
 
 ## 2026-09-26 (stale card cache after drag)
