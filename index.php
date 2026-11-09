@@ -7410,6 +7410,11 @@ $isGuestRequest = isset($_GET['guest']);
             animation: 150,
             handle: '.project-card',
             ghostClass: 'sortable-ghost',
+            // Same mobile guard as card stacks: a touch-and-scroll must not
+            // start a reorder. The drag only begins after a short hold.
+            delay: 500,
+            delayOnTouchOnly: true,
+            touchStartThreshold: 5,
             onChoose: () => document.body.classList.add('sortable-drag-active'),
             onUnchoose: () => document.body.classList.remove('sortable-drag-active'),
             onEnd: () => {

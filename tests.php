@@ -2751,6 +2751,13 @@ assert_true(str_contains($src, 'ORDER BY position') && str_contains($src, 'list_
 assert_true(str_contains($src, 'initProjectSortable'), 'initProjectSortable helper defined');
 assert_true(str_contains($src, "projects-list") && str_contains($src, 'Sortable'), 'SortableJS initialized on projects-list');
 
+// Scrolling the project list on mobile must not start a reorder. Same guard as cards.
+$projectSortableFn = substr($src, strpos($src, 'initProjectSortable() {'));
+$projectSortableFn = substr($projectSortableFn, 0, strpos($projectSortableFn, 'searchProjects(query) {'));
+assert_true(str_contains($projectSortableFn, 'delay: 500'), 'project drag waits before starting on touch');
+assert_true(str_contains($projectSortableFn, 'delayOnTouchOnly: true'), 'project drag delay applies only to touch');
+assert_true(str_contains($projectSortableFn, 'touchStartThreshold: 5'), 'project drag tolerates a small finger movement');
+
 // Frontend: project search
 assert_true(str_contains($src, 'searchProjects('), 'searchProjects function defined');
 assert_true(str_contains($src, 'project-search') || str_contains($src, 'projects-search'), 'project search input exists');
