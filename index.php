@@ -43,7 +43,7 @@ if (php_sapi_name() === 'cli-server') {
 // ============================================================================
 
 define('APP_NAME', 'Tasssks');
-define('APP_VERSION', '0.3.3');
+define('APP_VERSION', '0.3.4');
 define('DB_FILE', getenv('TASSSKS_DB_FILE') ?: __DIR__ . '/tasssks.sqlite');
 define('UPLOAD_DIR', getenv('TASSSKS_UPLOAD_DIR') ?: __DIR__ . '/uploads');
 define('MAX_UPLOAD_SIZE', (int) (getenv('TASSSKS_MAX_UPLOAD_SIZE') ?: (2 * 1024 * 1024)));
@@ -70,6 +70,9 @@ define('ALLOWED_UPLOAD_EXTENSIONS', [
   'zip',
 ]);
 define('FORCE_HTTPS', getenv('TASSSKS_FORCE_HTTPS') === '1');
+// Sessions persist across browser restarts and mobile app suspension.
+// Default: 1 day. Override with TASSSKS_SESSION_LIFETIME (seconds).
+define('SESSION_LIFETIME', (int) (getenv('TASSSKS_SESSION_LIFETIME') ?: 60 * 60 * 24));
 define('GITHUB_RAW_URL', 'https://raw.githubusercontent.com/Abtz-Labs/tasssks/main/index.php');
 
 // ============================================================================
@@ -442,7 +445,10 @@ if ($isHttps) {
 // HELPERS
 // ============================================================================
 
+ini_set('session.gc_maxlifetime', (string) SESSION_LIFETIME);
 session_set_cookie_params([
+  'lifetime' => SESSION_LIFETIME,
+  'path' => '/',
   'httponly' => true,
   'samesite' => 'Strict',
   'secure' => $isHttps,
@@ -3825,7 +3831,7 @@ $isGuestRequest = isset($_GET['guest']);
 <head>
   <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23434C5E'/><text x='16' y='22' font-family='sans-serif' font-size='14' font-weight='bold' fill='%23ECEFF4' text-anchor='middle'>T.</text></svg>">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
   <title><?= APP_NAME ?></title>
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js" integrity="sha384-HZZ/fukV+9G8gwTNjN7zQDG0Sp7MsZy5DDN6VfY3Be7V9dvQpEpR2jF2HlyFUUjU" crossorigin="anonymous"></script>
@@ -4013,6 +4019,12 @@ $isGuestRequest = isset($_GET['guest']);
     }
 
     /* Buttons */
+    /* Stop the mobile double-tap zoom delay on controls. */
+    button,
+    .btn {
+      touch-action: manipulation;
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -7024,6 +7036,10 @@ $isGuestRequest = isset($_GET['guest']);
           document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') this.refetchActiveView();
           });
+          if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => this._syncModalViewport());
+            window.visualViewport.addEventListener('scroll', () => this._syncModalViewport());
+          }
 
           $(document).on('click', e => {
             if (!$(e.target).closest('.dropdown').length) {
@@ -7896,21 +7912,31 @@ $isGuestRequest = isset($_GET['guest']);
         // CARDS
         showAddCard(columnId) {
           this.openModal('New Card', `
-            <div class="form-group"><label>Title</label><input type="text" id="new-card-title" placeholder="Card title"></div>
+            <div class="form-group"><label>Title</label><input type="text" id="new-card-title" placeholder="Card title" enterkeyhint="done"></div>
             <div class="form-group"><label>Description</label><div class="quill-wrap"><div id="new-card-desc"></div></div></div>
             <div class="form-group"><label>Position</label><select id="new-card-position" class="select-full"><option value="bottom">Bottom</option><option value="top">Top</option></select></div>
-        `, `<button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button> <button class="btn btn-primary" onclick="App.createCard(${columnId})">Add Card</button>`);
+        `, `<button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button> <button type="button" class="btn btn-primary" ontouchstart="App.createCard(${columnId}, event)" onclick="App.createCard(${columnId}, event)">Add Card</button>`);
           setTimeout(() => {
             this._quill = _initQuill('#new-card-desc', {
               placeholder: 'Optional description...'
             });
             $('#new-card-title').on('input', function() {
               _applyReplacements(this);
+            }).on('keydown', e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                this.createCard(columnId);
+              }
             }).focus();
           }, 50);
         },
 
-        createCard(columnId) {
+        createCard(columnId, event) {
+          // On mobile, the first tap on a footer button while the keyboard is
+          // open is often consumed by the keyboard dismissal. Act on touchstart
+          // so the card is created on the first tap.
+          if (event && event.type === 'touchstart') event.preventDefault();
+          if (this._creatingCard) return;
           const title = $('#new-card-title').val().trim();
           if (!title) {
             this.toast('Title is required.');
@@ -7919,6 +7945,9 @@ $isGuestRequest = isset($_GET['guest']);
           }
           const description = this._quill ? _quillToMarkdown(this._quill) : '';
           const atTop = $('#new-card-position').val() === 'top';
+          this._creatingCard = true;
+          const $btn = $('#modal-footer .btn-primary');
+          $btn.prop('disabled', true).text('Adding...');
           this.api('create_card', {
             column_id: columnId,
             title,
@@ -7928,6 +7957,11 @@ $isGuestRequest = isset($_GET['guest']);
             const cardId = res.id;
             this.closeModal();
             this.refreshBoard(() => this.openCard(cardId));
+          }).fail(xhr => {
+            this.toast(xhr.responseJSON?.error || 'Failed to create card');
+          }).always(() => {
+            this._creatingCard = false;
+            $btn.prop('disabled', false).text('Add Card');
           });
         },
 
@@ -10030,23 +10064,8 @@ $isGuestRequest = isset($_GET['guest']);
             const count = watchers.length;
             this._projectWatching = watching;
             $('#project-watch-btn').html(watching
-                ? ` < svg viewBox = "0 0 24 24"
-                    width = "14"
-                    height = "14"
-                    stroke = "currentColor"
-                    fill = "currentColor"
-                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
-                    cy = "12"
-                    r = "3"
-                    fill = "var(--surface)" / > < /svg> <span class="watch-label">Watching (${count})</span > `
-                : ` < svg viewBox = "0 0 24 24"
-                    width = "14"
-                    height = "14"
-                    stroke = "currentColor"
-                    fill = "none"
-                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
-                    cy = "12"
-                    r = "3" / > < /svg> <span class="watch-label">Watch (${count})</span > `);
+                ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span class="watch-label">Watching (${count})</span>`
+                : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span class="watch-label">Watch (${count})</span>`);
         });
     },
     watchProject() {
@@ -10078,23 +10097,8 @@ $isGuestRequest = isset($_GET['guest']);
     updateGuestWatchBtn() {
         const count = this._guestWatchCount || 0;
         $('#guest-watch-btn').html(this._guestWatching
-            ? ` < svg viewBox = "0 0 24 24"
-                    width = "14"
-                    height = "14"
-                    stroke = "currentColor"
-                    fill = "currentColor"
-                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
-                    cy = "12"
-                    r = "3"
-                    fill = "var(--surface)" / > < /svg> <span class="watch-label">Watching (${count})</span > `
-            : ` < svg viewBox = "0 0 24 24"
-                    width = "14"
-                    height = "14"
-                    stroke = "currentColor"
-                    fill = "none"
-                    stroke - width = "2" > < path d = "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" / > < circle cx = "12"
-                    cy = "12"
-                    r = "3" / > < /svg> <span class="watch-label">Watch (${count})</span > `);
+            ? `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="var(--surface)"/></svg> <span class="watch-label">Watching (${count})</span>`
+            : `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span class="watch-label">Watch (${count})</span>`);
     },
     guestWatchProject() {
         this.api('guest_watch', { project_id: this.currentProject.id }, 'POST').done(() => {
@@ -10181,17 +10185,43 @@ $isGuestRequest = isset($_GET['guest']);
                   },
 
                   // MODAL
+                  _syncModalViewport() {
+                    const overlay = document.getElementById('modal-overlay');
+                    const modal = overlay ? overlay.querySelector('.modal') : null;
+                    if (!overlay || !modal || !overlay.classList.contains('active')) return;
+                    const vv = window.visualViewport;
+                    if (!vv || !window.matchMedia('(max-width: 768px)').matches) {
+                      overlay.style.paddingTop = '';
+                      modal.style.maxHeight = '';
+                      return;
+                    }
+                    // Keep the modal footer (and its buttons) above the mobile keyboard.
+                    const top = Math.max(8, Math.round(vv.offsetTop + 8));
+                    overlay.style.paddingTop = top + 'px';
+                    modal.style.maxHeight = Math.max(240, Math.round(vv.height - top - 8)) + 'px';
+                  },
+
+                  _resetModalViewport() {
+                    const overlay = document.getElementById('modal-overlay');
+                    if (!overlay) return;
+                    overlay.style.paddingTop = '';
+                    const modal = overlay.querySelector('.modal');
+                    if (modal) modal.style.maxHeight = '';
+                  },
+
                   openModal(title, body, footer) {
                     $('#modal-title').html(title);
                     $('#modal-body .modal-body-scroll').html(body).scrollTop(0);
                     $('#modal-footer').html(footer || '');
                     $('#modal-overlay').addClass('active');
+                    this._syncModalViewport();
                   },
 
                   closeModal(event) {
                     if (event && event.target !== event.currentTarget) return;
                     if ($('#rk-saved-check').length && !$('#rk-saved-check').is(':checked')) return;
                     $('#modal-overlay').removeClass('active');
+                    this._resetModalViewport();
                     $('.modal').removeClass('modal-wide');
                     this._quill = null;
                     this._quillComment = null;

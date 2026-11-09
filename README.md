@@ -271,6 +271,12 @@ For production, use Apache or Nginx with PHP-FPM. The key security consideration
   TASSSKS_MAX_UPLOAD_SIZE=10485760 php -S localhost:2020 index.php  # 10 MB
   ```
 
+- **Session lifetime.** Login sessions persist for 1 day by default, including after the browser is closed or a mobile app is suspended. Override with `TASSSKS_SESSION_LIFETIME` (value in seconds):
+
+  ```bash
+  TASSSKS_SESSION_LIFETIME=604800 php -S localhost:2020 index.php  # 7 days
+  ```
+
 - **HTTPS behind a reverse proxy.** Set `TASSSKS_FORCE_HTTPS=1` when TLS ends
   at a proxy, so the session cookie gets the `Secure` flag and HSTS is sent.
   Only enable it when the public request really is HTTPS; otherwise browsers

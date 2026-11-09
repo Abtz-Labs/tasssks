@@ -1212,6 +1212,7 @@ assert_true(stripos($headResponse, "frame-ancestors 'none'") !== false, 'CSP blo
 assert_true(stripos($headResponse, 'X-Powered-By') === false, 'X-Powered-By header removed');
 assert_true(stripos($headResponse, 'HttpOnly') !== false, 'Session cookie has HttpOnly flag');
 assert_true(stripos($headResponse, 'SameSite=Strict') !== false, 'Session cookie has SameSite flag');
+assert_true((bool) preg_match('/Set-Cookie:[^\r\n]*Max-Age=\d+/i', $headResponse), 'Session cookie persists across browser restarts');
 
 // ─── SECURITY: SENSITIVE FILE ACCESS ────────────────────
 section('Sensitive File Blocking');
@@ -2317,7 +2318,7 @@ section('Updates');
 // auth_status returns version field
 $r = req('auth_status');
 assert_true(isset($r['body']['version']), 'auth_status returns version field');
-assert_eq('0.3.3', $r['body']['version'], 'version matches expected value');
+assert_eq('0.3.4', $r['body']['version'], 'version matches expected value');
 
 // auth_status returns update_available field
 assert_true(array_key_exists('update_available', $r['body']), 'auth_status returns update_available field');
@@ -2486,6 +2487,29 @@ assert_true(substr_count($src, 'setSetting(') >= 3, 'setSetting used in multiple
 assert_true(substr_count($src, 'rotateRecoveryKey(') >= 3, 'rotateRecoveryKey used in multiple places');
 assert_true(substr_count($src, 'formatEventText(') >= 3, 'formatEventText used in multiple places');
 
+// Sessions must survive mobile browser suspension and server-side GC
+assert_true(str_contains($src, "ini_set('session.gc_maxlifetime'"), 'Session GC lifetime is extended');
+assert_true(str_contains($src, "'lifetime' => SESSION_LIFETIME"), 'Session cookie has a persistent lifetime');
+
+// SVG icons must stay well-formed (regression: formatter inserted spaces inside tags)
+preg_match_all('/<\s*svg\b.*?<\s*\/\s*svg\s*>/is', $src, $svgMatches);
+assert_true(count($svgMatches[0]) > 0, 'SVG icons found in source');
+$badSvg = [];
+foreach ($svgMatches[0] as $svgIndex => $svg) {
+  if (
+    preg_match('/<\s+\/?\s*[a-z]/i', $svg) ||
+    preg_match('/\w\s+-\s+\w/', $svg) ||
+    preg_match('/\b\w+\s+=/', $svg) ||
+    preg_match('/\/\s+>/', $svg)
+  ) {
+    $badSvg[] = $svgIndex + 1;
+  }
+}
+assert_eq([], $badSvg, 'SVG markup has no spaces inside tags or attributes');
+$openSvgCount = preg_match_all('/<svg\b/i', $src);
+$closeSvgCount = preg_match_all('/<\/svg\s*>/i', $src);
+assert_eq($openSvgCount, $closeSvgCount, 'every SVG icon has a matching closing tag');
+
 // No leftover duplication of the patterns these helpers replaced
 $rawUpsertCount = preg_match_all('/INSERT INTO settings.*ON CONFLICT.*DO UPDATE/', $src);
 assert_eq(1, $rawUpsertCount, 'settings upsert only appears in setSetting helper');
@@ -2585,6 +2609,18 @@ assert_true((bool) preg_match('/input\[type="text"\],\s*input\[type="email"\],\s
 assert_true((bool) preg_match('/\.modal\s*\{[^}]*max-height:\s*80dvh/s', $src), 'modal height uses dvh');
 assert_true((bool) preg_match('/\.modal\s*\{[^}]*max-height:\s*calc\(100dvh - 48px\)/s', $mobileCss), 'mobile modal height uses dvh');
 assert_true((bool) preg_match('/\.modal-body-scroll\s*\{[^}]*overscroll-behavior:\s*contain/s', $src), 'modal scroll does not chain to the page');
+
+// Mobile Add Card: first tap must not be lost to keyboard dismissal
+assert_true(str_contains($src, 'interactive-widget=resizes-content'), 'mobile viewport resizes when the keyboard opens');
+assert_true((bool) preg_match('/button,\s*\.btn\s*\{[^}]*touch-action:\s*manipulation/s', $src), 'buttons use touch-action manipulation');
+assert_true(str_contains($src, 'ontouchstart="App.createCard('), 'Add Card acts on touchstart before the keyboard closes');
+assert_true(str_contains($src, "visualViewport.addEventListener('resize'"), 'modal tracks visual viewport resize');
+assert_true(str_contains($src, '_syncModalViewport()'), 'modal viewport sync helper exists');
+assert_true(str_contains($src, 'if (this._creatingCard) return;'), 'createCard ignores duplicate taps');
+assert_true(str_contains($src, 'enterkeyhint="done"'), 'mobile keyboard offers a done action');
+$createCardFn = substr($src, strpos($src, 'createCard(columnId, event) {'));
+$createCardFn = substr($createCardFn, 0, strpos($createCardFn, 'openCard(cardId) {'));
+assert_true(str_contains($createCardFn, '.fail('), 'createCard reports failed requests');
 
 // The update badge must not wipe project navbar actions
 $badgeFn = substr($src, strpos($src, '_updateSettingsBadge() {'));
