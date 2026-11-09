@@ -2510,6 +2510,11 @@ $openSvgCount = preg_match_all('/<svg\b/i', $src);
 $closeSvgCount = preg_match_all('/<\/svg\s*>/i', $src);
 assert_eq($openSvgCount, $closeSvgCount, 'every SVG icon has a matching closing tag');
 
+// Regression: the formatter must not space out tags or template expressions
+assert_true(!str_contains($src, '$ {'), 'template expressions are not split by spaces');
+assert_true(!str_contains($src, '< /'), 'closing tags are not split by spaces');
+assert_true(str_contains($src, '$(\'#navbar-actions\').html(`<div id="user-menu-slot">${this.renderUserMenu()}</div>`)'), 'user menu slot is rendered from a clean template');
+
 // No leftover duplication of the patterns these helpers replaced
 $rawUpsertCount = preg_match_all('/INSERT INTO settings.*ON CONFLICT.*DO UPDATE/', $src);
 assert_eq(1, $rawUpsertCount, 'settings upsert only appears in setSetting helper');
@@ -2757,6 +2762,13 @@ $projectSortableFn = substr($projectSortableFn, 0, strpos($projectSortableFn, 's
 assert_true(str_contains($projectSortableFn, 'delay: 500'), 'project drag waits before starting on touch');
 assert_true(str_contains($projectSortableFn, 'delayOnTouchOnly: true'), 'project drag delay applies only to touch');
 assert_true(str_contains($projectSortableFn, 'touchStartThreshold: 5'), 'project drag tolerates a small finger movement');
+
+// Project cards must show the same drag visuals as task cards
+assert_true(str_contains($projectSortableFn, "chosenClass: 'sortable-chosen'"), 'project drag marks the chosen card');
+assert_true((bool) preg_match('/\.project-card\.sortable-ghost\s*\{[^}]*opacity:\s*0\.4/s', $src), 'project ghost fades like a card');
+assert_true((bool) preg_match('/\.project-card\.sortable-ghost\s*\{[^}]*background:\s*var\(--primary-light\)/s', $src), 'project ghost uses the card highlight');
+assert_true((bool) preg_match('/\.project-card\.sortable-chosen\s*\{[^}]*transform:\s*rotate\(-2deg\)\s*scale\(1\.03\)/s', $src), 'project chosen card lifts and tilts like a card');
+assert_true((bool) preg_match('/\.project-card\.sortable-chosen\s*\{[^}]*box-shadow:\s*var\(--shadow-lg\)/s', $src), 'project chosen card gets the card shadow');
 
 // Frontend: project search
 assert_true(str_contains($src, 'searchProjects('), 'searchProjects function defined');
