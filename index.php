@@ -4578,7 +4578,18 @@ $isGuestRequest = isset($_GET['guest']);
       line-height: 1;
     }
 
-    .tag-delete:hover {
+    .tag-remove {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 13px;
+      height: 13px;
+      cursor: pointer;
+      opacity: 0.8;
+    }
+
+    .tag-delete:hover,
+    .tag-remove:hover {
       opacity: 1;
     }
 
@@ -7999,7 +8010,7 @@ $isGuestRequest = isset($_GET['guest']);
           }), this.currentProject.id) : '<em class="text-no-desc">No description</em>';
           const assignedTags = (card.tags || []);
           const tagsHtml = assignedTags.map(t =>
-            `<span class="tag" style="background:${this.safeColor(t.color)};cursor:pointer" onclick="App.toggleTag(${cardId},${t.id})">${this.esc(t.name)}</span>`
+            `<span class="tag" style="background:${this.safeColor(t.color)};cursor:pointer" onclick="App.showTagPicker(${cardId})">${this.esc(t.name)}<span class="tag-remove" title="Remove tag" onclick="event.stopPropagation();App.toggleTag(${cardId},${t.id})"><svg viewBox="0 0 12 12" width="8" height="8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></span></span>`
           ).join('');
 
           const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];

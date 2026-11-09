@@ -2555,6 +2555,15 @@ assert_true(str_contains($src, "toolbar.querySelectorAll('button, select')") && 
 // selectTagColor must not hardcode a specific hidden input ID (bug: project settings uses different ID)
 assert_true(!str_contains($src, "selectTagColor(el, color) {\n") || !str_contains($src, "\$('#new-tag-color').val(color)"), 'selectTagColor does not hardcode new-tag-color input');
 
+// Card tags: clicking the tag opens the picker, the X removes the tag
+$tagHtmlPos = strpos($src, 'const tagsHtml = assignedTags.map(t =>');
+$cardTagHtml = $tagHtmlPos === false ? '' : substr($src, $tagHtmlPos, 600);
+assert_true(str_contains($cardTagHtml, 'App.showTagPicker(${cardId})'), 'clicking a card tag opens the tag picker');
+assert_true(str_contains($cardTagHtml, 'event.stopPropagation();App.toggleTag(${cardId},${t.id})'), 'tag X removes the tag without opening the picker');
+assert_true(str_contains($cardTagHtml, 'tag-remove'), 'card tag has an X remove control');
+assert_true(str_contains($cardTagHtml, '<svg viewBox="0 0 12 12"'), 'card tag remove control renders an X icon');
+assert_true((bool) preg_match('/\.tag-remove\s*\{[^}]*display:\s*inline-flex[^}]*align-items:\s*center[^}]*justify-content:\s*center/s', $src), 'tag remove X is centered in its box');
+
 // formatDate helper exists and uses Intl.DateTimeFormat
 assert_true(str_contains($src, 'formatDate('), 'formatDate helper defined');
 assert_true(str_contains($src, 'Intl.DateTimeFormat'), 'formatDate uses Intl.DateTimeFormat');
