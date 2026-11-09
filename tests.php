@@ -2610,6 +2610,10 @@ assert_true((bool) preg_match('/\.modal\s*\{[^}]*max-height:\s*80dvh/s', $src), 
 assert_true((bool) preg_match('/\.modal\s*\{[^}]*max-height:\s*calc\(100dvh - 48px\)/s', $mobileCss), 'mobile modal height uses dvh');
 assert_true((bool) preg_match('/\.modal-body-scroll\s*\{[^}]*overscroll-behavior:\s*contain/s', $src), 'modal scroll does not chain to the page');
 
+// Long URLs in descriptions must wrap instead of overflowing the card modal
+assert_true((bool) preg_match('/\.markdown-body\s*\{[^}]*overflow-wrap:\s*break-word/s', $src), 'markdown text wraps long words');
+assert_true((bool) preg_match('/\.markdown-body\s*\{[^}]*word-break:\s*break-word/s', $src), 'markdown text breaks long words');
+
 // Mobile Add Card: first tap must not be lost to keyboard dismissal
 assert_true(str_contains($src, 'interactive-widget=resizes-content'), 'mobile viewport resizes when the keyboard opens');
 assert_true((bool) preg_match('/button,\s*\.btn\s*\{[^}]*touch-action:\s*manipulation/s', $src), 'buttons use touch-action manipulation');

@@ -4768,6 +4768,8 @@ $isGuestRequest = isset($_GET['guest']);
     .markdown-body {
       font-size: 14px;
       line-height: 1.6;
+      overflow-wrap: break-word;
+      word-break: break-word;
     }
 
     .markdown-body p {
