@@ -2515,6 +2515,17 @@ assert_true(!str_contains($src, '$ {'), 'template expressions are not split by s
 assert_true(!str_contains($src, '< /'), 'closing tags are not split by spaces');
 assert_true(str_contains($src, '$(\'#navbar-actions\').html(`<div id="user-menu-slot">${this.renderUserMenu()}</div>`)'), 'user menu slot is rendered from a clean template');
 
+// Favicon: large glyph, same style as the Emmmail icon
+preg_match('/rel="icon" href="data:image\/svg\+xml,([^"]+)"/', $src, $iconMatch);
+$favicon = $iconMatch[1] ?? '';
+assert_true($favicon !== '', 'favicon is defined');
+assert_true(str_contains($favicon, "viewBox='0 0 32 32'"), 'favicon uses the 32x32 canvas');
+assert_true(str_contains($favicon, "rx='7'"), 'favicon matches the Emmmail corner radius');
+assert_true(str_contains($favicon, "fill='%232e3440'"), 'favicon matches the Emmmail background');
+assert_true(str_contains($favicon, "fill='%2388c0d0'"), 'favicon uses the Emmmail accent dot');
+assert_true(str_contains($favicon, "M6 7h13v4"), 'favicon draws a large T glyph');
+assert_true(!str_contains($favicon, '<text'), 'favicon does not depend on a font');
+
 // No leftover duplication of the patterns these helpers replaced
 $rawUpsertCount = preg_match_all('/INSERT INTO settings.*ON CONFLICT.*DO UPDATE/', $src);
 assert_eq(1, $rawUpsertCount, 'settings upsert only appears in setSetting helper');
