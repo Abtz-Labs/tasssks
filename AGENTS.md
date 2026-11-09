@@ -12,6 +12,7 @@ Single-file PHP kanban board. All backend logic, frontend HTML/CSS/JS lives in `
 - `just start 3000 background` — dev server in background on custom port
 - `just stop` — stop background dev server
 - `just test` — run test suite (spins up its own server on port 8089, uses `test.sqlite`, cleans up after)
+- `just check-integrity` — fail if a formatter split HTML tags or `${...}` in `index.php`
 
 Or directly: `php -S localhost:8080 index.php`
 
