@@ -120,7 +120,7 @@ The first column has no menu, because it cannot be deleted.
 
 ### Team
 
-Admins can invite team members from the Account menu (Team section). Members can create their own projects and collaborate on projects where they are added as owners.
+Admins can invite team members from the Account menu (Team section). Members can create their own projects and collaborate on projects where they are added as owners. New members set their own password and save a recovery key on first login.
 
 ### Guests
 
@@ -147,6 +147,8 @@ Track time spent on cards. Click the stopwatch icon on any card to open the time
 - **In-progress entries** — set only a start time to mark work as ongoing. An "End" button appears in the entry list to complete it later.
 
 If the end time is earlier than the start time, it counts on the next day: `23:00 → 01:00` is 2h, and the entry is marked with `+1d`. The form stays open after saving, so you can log several entries in a row. Click the pencil icon on an entry to change its date, times, or note.
+
+Only the author, project owners, and admins can edit or delete an entry.
 
 Moving a card to another column (including "Move all cards to...") stops any running timer on that card, so a forgotten timer never keeps counting after the work is done.
 

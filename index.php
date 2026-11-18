@@ -409,7 +409,15 @@ function migrateDatabase(PDO $db): void
     $db->exec("CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email, attempted_at)");
   }
 
-  $db->exec('PRAGMA user_version = 10');
+  // Version 10 → 11: persistent forced password reset
+  if ($version < 11) {
+    $cols = $db->query("PRAGMA table_info(users)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    if (!in_array('password_reset_required', $cols)) {
+      $db->exec("ALTER TABLE users ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0");
+    }
+  }
+
+  $db->exec('PRAGMA user_version = 11');
 }
 
 // ============================================================================
@@ -1190,7 +1198,7 @@ function apiAuthLogin(): void
   checkRateLimit($email);
 
   $db = getDb();
-  $stmt = $db->prepare("SELECT id, password_hash, recovery_key_hash, session_version FROM users WHERE email = ?");
+  $stmt = $db->prepare("SELECT id, password_hash, recovery_key_hash, session_version, password_reset_required FROM users WHERE email = ?");
   $stmt->execute([$email]);
   $user = $stmt->fetch();
 
@@ -1225,7 +1233,7 @@ function apiAuthLogin(): void
         recordFailedAttempt($email);
         jsonResponse(['error' => 'Invalid email or password'], 403);
       }
-    } elseif (!$user['recovery_key_hash']) {
+    } elseif (!$user['recovery_key_hash'] || (int) ($user['password_reset_required'] ?? 0) === 1) {
       $response['recovery_key'] = rotateRecoveryKey($user['id']);
       $passwordResetRequired = true;
     }
@@ -1237,6 +1245,7 @@ function apiAuthLogin(): void
   $_SESSION['session_version'] = $sessionVersion ?? (int) $user['session_version'];
   $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
   if ($passwordResetRequired) {
+    $db->prepare("UPDATE users SET password_reset_required = 1 WHERE id = ?")->execute([$user['id']]);
     $_SESSION['password_reset_required'] = true;
     $_SESSION['password_reset_user_id'] = (int) $user['id'];
     $response['password_reset'] = true;
@@ -1316,20 +1325,27 @@ function apiAccountUpdate(): void
     if (strlen($password) < 6) {
       jsonResponse(['error' => 'New password must be at least 6 characters'], 400);
     }
-    if (!$currentPassword && $isSessionUser && !empty($_SESSION['password_reset_required']) && (int) ($_SESSION['password_reset_user_id'] ?? 0) === (int) $user['id']) {
-      // Recovery-key login for this user: allow password change without current password
+    $stmt = $db->prepare("SELECT password_hash, password_reset_required FROM users WHERE id = ?");
+    $stmt->execute([$user['id']]);
+    $row = $stmt->fetch();
+    $resetAllowed = $isSessionUser && (
+      (int) ($row['password_reset_required'] ?? 0) === 1 ||
+      (!empty($_SESSION['password_reset_required']) && (int) ($_SESSION['password_reset_user_id'] ?? 0) === (int) $user['id'])
+    );
+    $forcedReset = !$currentPassword && $resetAllowed;
+    if ($forcedReset) {
+      // Forced reset after login: allow password change without the current password.
     } else {
-      $stmt = $db->prepare("SELECT password_hash FROM users WHERE id = ?");
-      $stmt->execute([$user['id']]);
-      $row = $stmt->fetch();
       if (!password_verify($currentPassword, $row['password_hash'])) {
         jsonResponse(['error' => 'Current password is incorrect'], 403);
       }
     }
     $hash = password_hash($password, PASSWORD_BCRYPT);
-    $db->prepare("UPDATE users SET name = ?, email = ?, password_hash = ?, session_version = session_version + 1 WHERE id = ?")
+    $db->prepare("UPDATE users SET name = ?, email = ?, password_hash = ?, session_version = session_version + 1, password_reset_required = 0 WHERE id = ?")
       ->execute([$name, $email, $hash, $user['id']]);
-    $response['recovery_key'] = rotateRecoveryKey($user['id']);
+    if (!$forcedReset) {
+      $response['recovery_key'] = rotateRecoveryKey($user['id']);
+    }
     $db->prepare("DELETE FROM api_tokens WHERE user_id = ?")->execute([$user['id']]);
     if ($isSessionUser) {
       $versionStmt = $db->prepare("SELECT session_version FROM users WHERE id = ?");
@@ -1463,7 +1479,7 @@ function apiTeamAdd(): void
   }
 
   $hash = password_hash($password, PASSWORD_BCRYPT);
-  $stmt = $db->prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)");
+  $stmt = $db->prepare("INSERT INTO users (name, email, password_hash, role, password_reset_required) VALUES (?, ?, ?, ?, 1)");
   $stmt->execute([$name, $email, $hash, $role]);
   jsonResponse(['ok' => true, 'id' => (int) $db->lastInsertId()]);
 }
@@ -1534,8 +1550,9 @@ function apiTeamResetPassword(): void
 
   $db = getDb();
   $hash = password_hash($password, PASSWORD_BCRYPT);
-  $db->prepare("UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?")
-    ->execute([$hash, $id]);
+  $forceReset = (int) $user['id'] === $id ? 0 : 1;
+  $db->prepare("UPDATE users SET password_hash = ?, session_version = session_version + 1, password_reset_required = ? WHERE id = ?")
+    ->execute([$hash, $forceReset, $id]);
   clearRecoveryKey($id);
   $db->prepare("DELETE FROM api_tokens WHERE user_id = ?")->execute([$id]);
 
@@ -3438,7 +3455,16 @@ function apiListTimeEntries(): void
   $sql = "SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at, te.start_time, te.end_time, te.created_at FROM time_entries te WHERE " . implode(' AND ', $where) . " ORDER BY te.worked_at DESC, te.created_at DESC";
   $stmt = $db->prepare($sql);
   $stmt->execute($params);
-  jsonResponse($stmt->fetchAll());
+  $entries = $stmt->fetchAll();
+
+  $user = getCurrentUser();
+  $isOwner = $user && isProjectOwner($projectId);
+  foreach ($entries as &$entry) {
+    $entry['can_edit'] = $user && ((int) $entry['user_id'] === (int) $user['id'] || $isOwner);
+  }
+  unset($entry);
+
+  jsonResponse($entries);
 }
 
 function apiDeleteTimeEntry(): void
@@ -8740,9 +8766,11 @@ $isGuestRequest = isset($_GET['guest']);
               const timeCol = inProgress ?
                 `<span class="text-muted">${start} → ?</span>` :
                 (e.start_time ? `${start}→${end} (${this.formatMinutes(e.minutes)})${nextDay ? ' <span class="time-next-day" title="Ends on the next day">+1d</span>' : ''}` : `<strong>${this.formatMinutes(e.minutes)}</strong>`);
-              const actions = (inProgress ?
+              const actions = e.can_edit ?
+                (inProgress ?
                   `<button type="button" class="btn btn-primary btn-xs" onclick="App.endTimeEntry(${e.id},${cardId})" title="End now">End</button> ` : '') +
-                `<button type="button" class="btn-icon btn-sm" onclick="App.editTimeEntry(${e.id},${cardId})" title="Edit">&#9998;</button> <button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button>`;
+                `<button type="button" class="btn-icon btn-sm" onclick="App.editTimeEntry(${e.id},${cardId})" title="Edit">&#9998;</button> <button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button>` :
+                '';
               return `<tr${inProgress ? ' class="in-progress"' : ''}>
                     <td>${timeCol}</td>
                     <td>${this.esc(e.worked_at)}</td>
@@ -8862,7 +8890,7 @@ $isGuestRequest = isset($_GET['guest']);
             card_id: cardId
           }).done(entries => {
             const e = entries.find(x => x.id == id);
-            if (!e) return;
+            if (!e || !e.can_edit) return;
             this.openModal('Edit Time Entry', `
                 <form id="time-edit-form" onsubmit="event.preventDefault();App.saveTimeEntry(${e.id},${cardId})">
                     <div class="time-form">
@@ -8931,6 +8959,8 @@ $isGuestRequest = isset($_GET['guest']);
               id
             }, 'POST').done(() => {
               this.refreshBoard(() => App.openCard(cardId));
+            }).fail(xhr => {
+              this.toast(xhr.responseJSON?.error || 'Failed to delete time entry');
             });
           }), 50);
         },
@@ -9859,7 +9889,8 @@ $isGuestRequest = isset($_GET['guest']);
             <div class="card-detail-section">
                 <h4>Time Tracking</h4>
                 <p class="text-base text">Open the time section from the stopwatch button on a card. Pick the date first, then the start and end times. An end time earlier than the start time counts on the next day: <strong>23:00 → 01:00</strong> is 2h, and the entry shows <strong>+1d</strong>.</p>
-                <p class="text-base text">Leave the end time empty to keep the timer running, then press <strong>End</strong> when you stop. The form stays open after you save, and the pencil icon on any entry lets you change its date, times, or note.</p>
+                <p class="text-base text">Leave the end time empty to keep the timer running, then press <strong>End</strong> when you stop. The form stays open after you save, and the pencil icon on your entries lets you change the date, times, or note.</p>
+                <p class="text-base text">Only the author, project owners, and admins can edit or delete an entry.</p>
                 <p class="text-base text">Moving a card to another column stops its running timer automatically.</p>
             </div>
             <div class="card-detail-section">
@@ -9886,7 +9917,7 @@ $isGuestRequest = isset($_GET['guest']);
             </div>
             <div class="card-detail-section">
                 <h4>Recovery Key</h4>
-                <p class="text-base text">On first login, a recovery key is generated and shown once. Save it securely — it can replace your password if you forget it. After use, the key is rotated and you receive a new one. You can also regenerate it from <strong>Account &gt; Recovery Key</strong>.</p>
+                <p class="text-base text">On first login, a recovery key is generated and shown once. New team members also set their own password at that point. Save the key securely — it can replace your password if you forget it. After use, the key is rotated and you receive a new one. You can also regenerate it from <strong>Account &gt; Recovery Key</strong>.</p>
             </div>
             <div class="card-detail-section">
                 <h4>Version</h4>

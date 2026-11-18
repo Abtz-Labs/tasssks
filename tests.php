@@ -281,8 +281,21 @@ assert_true(!empty($r['body']['recovery_key']), 'first login returns recovery ke
 assert_true(!empty($r['body']['password_reset']), 'first login sets password_reset for member');
 $memberRecoveryKey = $r['body']['recovery_key'];
 $memberCsrf = $r['body']['csrf_token'];
-// Consume password_reset flag so later tests work normally
-req('account_update', ['name' => 'Member', 'email' => 'member@test.com', 'password' => 'newpass1'], 'POST', $memberCsrf, $memberCookie);
+
+// The reset requirement is stored on the user, so a second login keeps it.
+$memberSecondCookie = tempnam(sys_get_temp_dir(), 'kanban_member_second_');
+$r = req('auth_login', ['email' => 'member@test.com', 'password' => 'newpass1'], 'POST', '', $memberSecondCookie);
+assert_eq(200, $r['status'], 'second member login succeeds');
+assert_true(!empty($r['body']['password_reset']), 'second login still requires password reset');
+
+// An earlier session can finish the reset without the current password.
+$r = req('account_update', ['name' => 'Member', 'email' => 'member@test.com', 'password' => 'newpass1'], 'POST', $memberCsrf, $memberCookie);
+assert_eq(200, $r['status'], 'forced password reset works from an earlier session');
+assert_true(empty($r['body']['recovery_key']), 'forced reset keeps the recovery key shown at login');
+
+$r = req('auth_status', [], 'GET', '', $memberSecondCookie);
+assert_eq(false, $r['body']['authenticated'], 'password change invalidates other member sessions');
+@unlink($memberSecondCookie);
 
 $r = req('team_list', [], 'GET', '', $memberCookie);
 assert_eq(403, $r['status'], 'member cannot list team');
@@ -605,6 +618,9 @@ assert_eq(400, $r['status'], 'cannot use taken email');
 
 $r = req('account_update', ['name' => 'X', 'email' => 'member@test.com', 'password' => 'newpw22', 'current_password' => 'wrong'], 'POST', $memberCsrf, $memberCookie);
 assert_eq(403, $r['status'], 'wrong current password rejected');
+
+$r = req('account_update', ['name' => 'X', 'email' => 'member@test.com', 'password' => 'newpw22'], 'POST', $memberCsrf, $memberCookie);
+assert_eq(403, $r['status'], 'password change without current password rejected after reset');
 
 $r = req('account_update', ['name' => 'X', 'email' => 'member@test.com', 'password' => 'newpw22', 'current_password' => 'newpass1'], 'POST', $memberCsrf, $memberCookie);
 assert_eq(200, $r['status'], 'password change with correct current password');
@@ -1982,6 +1998,18 @@ $r = reqBearer('create_time_entry', $timeMemberTokenRaw, ['card_id' => $timeCard
 assert_eq(200, $r['status'], 'member can create time entry');
 $memberTimeEntryId = $r['body']['id'];
 
+// The UI receives a per-entry permission flag.
+$r = reqBearer('list_time_entries', $timeMemberTokenRaw, ['card_id' => $timeCardId], 'GET');
+$memberView = [];
+foreach ($r['body'] as $entry) $memberView[$entry['id']] = $entry;
+assert_eq(true, $memberView[$memberTimeEntryId]['can_edit'], 'member can edit own time entry in the UI');
+assert_eq(false, $memberView[$timeEntryId1]['can_edit'], 'member cannot edit others time entries in the UI');
+
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$adminView = [];
+foreach ($r['body'] as $entry) $adminView[$entry['id']] = $entry;
+assert_eq(true, $adminView[$timeEntryId1]['can_edit'], 'project owner can edit any time entry in the UI');
+
 // Invalid dates and times are rejected.
 $r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 30, 'worked_at' => '2026-02-31'], 'POST', $adminCsrf);
 assert_eq(400, $r['status'], 'impossible calendar date rejected');
@@ -2617,9 +2645,10 @@ assert_true($datePos !== false && $startPos !== false && $datePos < $startPos, '
 assert_true(str_contains($src, 'time-overnight'), 'time form shows an overnight hint');
 assert_true(str_contains($src, 'time-next-day'), 'cross-midnight entries are marked in the list');
 assert_true(str_contains($src, 'editTimeEntry('), 'editTimeEntry function defined');
-$timeRow = substr($src, strpos($src, 'const actions = (inProgress'));
+$timeRow = substr($src, strpos($src, 'const actions = e.can_edit ?'));
 $timeRow = substr($timeRow, 0, strpos($timeRow, '</tr>'));
 assert_eq(1, substr_count($timeRow, 'App.confirmDeleteTimeEntry('), 'each time entry row has a single delete button');
+assert_true(str_contains($timeRow, 'e.can_edit'), 'time entry actions are gated by edit permission');
 assert_true(str_contains($src, 'saveTimeEntry('), 'saveTimeEntry function defined');
 assert_true(str_contains($src, "api('update_time_entry'"), 'edit sends update_time_entry');
 $addTimeFn = substr($src, strpos($src, 'addTimeEntry(cardId) {'));
@@ -2763,7 +2792,8 @@ $src = file_get_contents(__DIR__ . '/index.php');
 assert_true(str_contains($src, 'ALTER TABLE projects ADD COLUMN position'), 'migration adds position column to projects');
 assert_true(str_contains($src, 'ALTER TABLE users ADD COLUMN session_version'), 'migration adds session_version to users');
 assert_true(str_contains($src, 'ALTER TABLE login_attempts ADD COLUMN email'), 'migration adds email to login_attempts');
-assert_true(str_contains($src, 'user_version = 10'), 'migration version bumped to 10');
+assert_true(str_contains($src, 'ALTER TABLE users ADD COLUMN password_reset_required'), 'migration adds password_reset_required to users');
+assert_true(str_contains($src, 'user_version = 11'), 'migration version bumped to 11');
 
 // Backend: reorder_projects endpoint
 assert_true(str_contains($src, 'reorder_projects'), 'reorder_projects route exists');
