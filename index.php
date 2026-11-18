@@ -417,7 +417,16 @@ function migrateDatabase(PDO $db): void
     }
   }
 
-  $db->exec('PRAGMA user_version = 11');
+  // Version 11 → 12: lock finished time entries after 24 hours
+  if ($version < 12) {
+    $cols = $db->query("PRAGMA table_info(time_entries)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    if (!in_array('finished_at', $cols)) {
+      $db->exec("ALTER TABLE time_entries ADD COLUMN finished_at TEXT");
+      $db->exec("UPDATE time_entries SET finished_at = created_at WHERE finished_at IS NULL AND NOT (start_time IS NOT NULL AND end_time IS NULL)");
+    }
+  }
+
+  $db->exec('PRAGMA user_version = 12');
 }
 
 // ============================================================================
@@ -3287,7 +3296,7 @@ function endRunningTimeEntries(int $cardId, string $at = '', ?int $tzOffset = nu
     $now = $at;
   }
 
-  $upd = $db->prepare("UPDATE time_entries SET end_time = ?, minutes = ? WHERE id = ?");
+  $upd = $db->prepare("UPDATE time_entries SET end_time = ?, minutes = ?, finished_at = ? WHERE id = ?");
   foreach ($rows as $row) {
     // Prefer the client clock. Fall back to the entry's own timezone offset, so the
     // end time is never the server's UTC time-of-day.
@@ -3296,7 +3305,7 @@ function endRunningTimeEntries(int $cardId, string $at = '', ?int $tzOffset = nu
       $offset = $tzOffset ?? ($row['tz_offset'] !== null ? (int) $row['tz_offset'] : null);
       $end = $offset !== null ? gmdate('H:i', time() - $offset * 60) : date('H:i');
     }
-    $upd->execute([$end, calcMinutesFromTimes($row['start_time'], $end), $row['id']]);
+    $upd->execute([$end, calcMinutesFromTimes($row['start_time'], $end), gmdate('Y-m-d H:i:s'), $row['id']]);
   }
   return count($rows);
 }
@@ -3319,6 +3328,13 @@ function csvField(mixed $value): string
     $value = "'" . $value;
   }
   return '"' . str_replace('"', '""', $value) . '"';
+}
+
+function isTimeEntryLocked(array $entry): bool
+{
+  if (empty($entry['finished_at'])) return false;
+  $finished = strtotime($entry['finished_at'] . ' UTC');
+  return $finished !== false && $finished <= time() - 86400;
 }
 
 function apiCreateTimeEntry(): void
@@ -3356,8 +3372,9 @@ function apiCreateTimeEntry(): void
   $card = $card->fetch();
   if (!$card) jsonResponse(['error' => 'Card not found'], 404);
 
-  $stmt = $db->prepare("INSERT INTO time_entries (project_id, card_id, card_title, user_id, author_name, minutes, note, worked_at, start_time, end_time, tz_offset) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $stmt->execute([$card['project_id'], $cardId, $card['title'], $user['id'], $user['name'], $minutes, $note, $workedAt, $startTime ?: null, $endTime ?: null, $tzOffset]);
+  $stmt = $db->prepare("INSERT INTO time_entries (project_id, card_id, card_title, user_id, author_name, minutes, note, worked_at, start_time, end_time, tz_offset, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $finishedAt = ($startTime && !$endTime) ? null : gmdate('Y-m-d H:i:s');
+  $stmt->execute([$card['project_id'], $cardId, $card['title'], $user['id'], $user['name'], $minutes, $note, $workedAt, $startTime ?: null, $endTime ?: null, $tzOffset, $finishedAt]);
 
   jsonResponse(['id' => (int) $db->lastInsertId()]);
 }
@@ -3378,6 +3395,9 @@ function apiUpdateTimeEntry(): void
 
   if ($entry['user_id'] !== $user['id'] && !isProjectOwner($entry['project_id'])) {
     jsonResponse(['error' => 'Forbidden'], 403);
+  }
+  if (isTimeEntryLocked($entry)) {
+    jsonResponse(['error' => 'Time entries are locked 24 hours after they are finished'], 403);
   }
 
   $startTime = array_key_exists('start_time', $input) ? trim($input['start_time']) : $entry['start_time'];
@@ -3403,8 +3423,15 @@ function apiUpdateTimeEntry(): void
     ? max(-840, min(840, (int) $input['tz_offset']))
     : null;
 
-  $stmt = $db->prepare("UPDATE time_entries SET start_time = ?, end_time = ?, note = ?, minutes = ?, worked_at = ?, tz_offset = COALESCE(?, tz_offset) WHERE id = ?");
-  $stmt->execute([$startTime ?: null, $endTime ?: null, $note, $minutes, $workedAt, $tzOffset, $id]);
+  $finishedAt = $entry['finished_at'];
+  if ($startTime && !$endTime) {
+    $finishedAt = null;
+  } elseif (!$finishedAt) {
+    $finishedAt = gmdate('Y-m-d H:i:s');
+  }
+
+  $stmt = $db->prepare("UPDATE time_entries SET start_time = ?, end_time = ?, note = ?, minutes = ?, worked_at = ?, tz_offset = COALESCE(?, tz_offset), finished_at = ? WHERE id = ?");
+  $stmt->execute([$startTime ?: null, $endTime ?: null, $note, $minutes, $workedAt, $tzOffset, $finishedAt, $id]);
 
   jsonResponse(['ok' => true]);
 }
@@ -3452,7 +3479,7 @@ function apiListTimeEntries(): void
     $params[] = $to;
   }
 
-  $sql = "SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at, te.start_time, te.end_time, te.created_at FROM time_entries te WHERE " . implode(' AND ', $where) . " ORDER BY te.worked_at DESC, te.created_at DESC";
+  $sql = "SELECT te.id, te.card_id, te.card_title, te.user_id, te.author_name, te.minutes, te.note, te.worked_at, te.start_time, te.end_time, te.finished_at, te.created_at FROM time_entries te WHERE " . implode(' AND ', $where) . " ORDER BY te.worked_at DESC, te.created_at DESC";
   $stmt = $db->prepare($sql);
   $stmt->execute($params);
   $entries = $stmt->fetchAll();
@@ -3460,7 +3487,8 @@ function apiListTimeEntries(): void
   $user = getCurrentUser();
   $isOwner = $user && isProjectOwner($projectId);
   foreach ($entries as &$entry) {
-    $entry['can_edit'] = $user && ((int) $entry['user_id'] === (int) $user['id'] || $isOwner);
+    $entry['locked'] = isTimeEntryLocked($entry);
+    $entry['can_edit'] = $user && ((int) $entry['user_id'] === (int) $user['id'] || $isOwner) && !$entry['locked'];
   }
   unset($entry);
 
@@ -3483,6 +3511,9 @@ function apiDeleteTimeEntry(): void
 
   if ($entry['user_id'] !== $user['id'] && !isProjectOwner($entry['project_id'])) {
     jsonResponse(['error' => 'Forbidden'], 403);
+  }
+  if (isTimeEntryLocked($entry)) {
+    jsonResponse(['error' => 'Time entries are locked 24 hours after they are finished'], 403);
   }
 
   $db->prepare("DELETE FROM time_entries WHERE id = ?")->execute([$id]);
@@ -5658,6 +5689,12 @@ $isGuestRequest = isset($_GET['guest']);
       font-size: 11px;
       color: var(--text-muted);
       white-space: nowrap;
+    }
+
+    .time-locked {
+      opacity: 0.55;
+      font-size: 13px;
+      cursor: default;
     }
 
     .time-input-group {
@@ -8798,7 +8835,7 @@ $isGuestRequest = isset($_GET['guest']);
                 (inProgress ?
                   `<button type="button" class="btn btn-primary btn-xs" onclick="App.endTimeEntry(${e.id},${cardId})" title="End now">End</button> ` : '') +
                 `<button type="button" class="btn-icon btn-sm" onclick="App.editTimeEntry(${e.id},${cardId})" title="Edit">&#9998;</button> <button type="button" class="btn-icon btn-sm btn-icon-danger" onclick="App.confirmDeleteTimeEntry(${e.id},${cardId})" title="Delete">&times;</button>` :
-                '';
+                (e.locked ? '<span class="time-locked" title="Locked: more than 24 hours after finishing">&#128274;</span>' : '');
               return `<tr${inProgress ? ' class="in-progress"' : ''}>
                     <td>${timeCol}</td>
                     <td>${this.esc(e.worked_at)}</td>
@@ -9918,7 +9955,7 @@ $isGuestRequest = isset($_GET['guest']);
                 <h4>Time Tracking</h4>
                 <p class="text-base text">Open the time section from the stopwatch button on a card. Pick the date first, then the start and end times. An end time earlier than the start time counts on the next day: <strong>23:00 → 01:00</strong> is 2h, and the entry shows <strong>+1d</strong>.</p>
                 <p class="text-base text">Leave the end time empty to keep the timer running, then press <strong>End</strong> when you stop. The form stays open after you save, and the pencil icon on your entries lets you change the date, times, or note.</p>
-                <p class="text-base text">Only the author, project owners, and admins can edit or delete an entry.</p>
+                <p class="text-base text">Only the author, project owners, and admins can edit or delete an entry. Entries are locked 24 hours after they are finished.</p>
                 <p class="text-base text">Moving a card to another column stops its running timer automatically.</p>
             </div>
             <div class="card-detail-section">

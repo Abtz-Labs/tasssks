@@ -2328,6 +2328,7 @@ assert_eq(1, (int)($r['body']['ended_timers'] ?? 0), 'bulk move reports the ende
 $r = req('list_time_entries', ['card_id' => $bulkCardId], 'GET', '', $cookieFile);
 $bulkEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $bulkEntryId))[0] ?? null;
 assert_true($bulkEntry !== null && $bulkEntry['end_time'] !== null, 'bulk move ends running timers');
+assert_true(!empty($bulkEntry['finished_at']), 'auto-ended timer starts the 24-hour lock window');
 
 // Clean up: delete test entries
 $r = req('delete_time_entry', ['id' => $startEndEntryId], 'POST', $adminCsrf);
@@ -2338,6 +2339,40 @@ $r = req('delete_time_entry', ['id' => $lateTimerId], 'POST', $adminCsrf);
 $r = req('delete_time_entry', ['id' => $stillRunningId], 'POST', $adminCsrf);
 $r = req('delete_time_entry', ['id' => $offsetEntryId], 'POST', $adminCsrf);
 $r = req('delete_time_entry', ['id' => $requestOffsetEntryId], 'POST', $adminCsrf);
+
+// --- 24-hour lock on finished entries ---
+$r = req('create_time_entry', ['card_id' => $timeCardId, 'minutes' => 30, 'worked_at' => date('Y-m-d'), 'note' => 'Lock window'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'create entry for lock test');
+$lockEntryId = $r['body']['id'];
+
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$lockEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $lockEntryId))[0] ?? null;
+assert_eq(false, $lockEntry['locked'], 'fresh entry is not locked');
+assert_eq(true, $lockEntry['can_edit'], 'fresh entry can be edited');
+$r = req('update_time_entry', ['id' => $lockEntryId, 'note' => 'Within 24h'], 'POST', $adminCsrf);
+assert_eq(200, $r['status'], 'fresh entry can be updated');
+
+// Move the finish time past the 24-hour window.
+$lockDb = new PDO('sqlite:' . $TEST_DB, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$lockDb->exec("UPDATE time_entries SET finished_at = datetime('now', '-25 hours') WHERE id = $lockEntryId");
+$lockDb = null;
+usleep(50_000);
+
+$r = req('list_time_entries', ['card_id' => $timeCardId], 'GET', '', $cookieFile);
+$lockEntry = array_values(array_filter($r['body'], fn($e) => $e['id'] == $lockEntryId))[0] ?? null;
+assert_eq(true, $lockEntry['locked'], 'entry is locked after 24 hours');
+assert_eq(false, $lockEntry['can_edit'], 'locked entry has no edit controls');
+
+$r = req('update_time_entry', ['id' => $lockEntryId, 'note' => 'Too late'], 'POST', $adminCsrf);
+assert_eq(403, $r['status'], 'locked entry cannot be updated');
+$r = req('delete_time_entry', ['id' => $lockEntryId], 'POST', $adminCsrf);
+assert_eq(403, $r['status'], 'locked entry cannot be deleted');
+
+// The API refuses, so remove the locked fixture through the DB.
+$lockDb = new PDO('sqlite:' . $TEST_DB, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$lockDb->exec("DELETE FROM time_entries WHERE id = $lockEntryId");
+$lockDb = null;
+
 $r = req('delete_column', ['id' => $ttBulkCol], 'POST', $adminCsrf);
 
 // ─── UPDATES ──────────────────────────────────────────────
@@ -2793,7 +2828,8 @@ assert_true(str_contains($src, 'ALTER TABLE projects ADD COLUMN position'), 'mig
 assert_true(str_contains($src, 'ALTER TABLE users ADD COLUMN session_version'), 'migration adds session_version to users');
 assert_true(str_contains($src, 'ALTER TABLE login_attempts ADD COLUMN email'), 'migration adds email to login_attempts');
 assert_true(str_contains($src, 'ALTER TABLE users ADD COLUMN password_reset_required'), 'migration adds password_reset_required to users');
-assert_true(str_contains($src, 'user_version = 11'), 'migration version bumped to 11');
+assert_true(str_contains($src, 'ALTER TABLE time_entries ADD COLUMN finished_at'), 'migration adds finished_at to time_entries');
+assert_true(str_contains($src, 'user_version = 12'), 'migration version bumped to 12');
 
 // Backend: reorder_projects endpoint
 assert_true(str_contains($src, 'reorder_projects'), 'reorder_projects route exists');

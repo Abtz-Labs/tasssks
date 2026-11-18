@@ -148,7 +148,7 @@ Track time spent on cards. Click the stopwatch icon on any card to open the time
 
 If the end time is earlier than the start time, it counts on the next day: `23:00 → 01:00` is 2h, and the entry is marked with `+1d`. The form stays open after saving, so you can log several entries in a row. Click the pencil icon on an entry to change its date, times, or note.
 
-Only the author, project owners, and admins can edit or delete an entry.
+Only the author, project owners, and admins can edit or delete an entry. Entries are locked 24 hours after they are finished.
 
 Moving a card to another column (including "Move all cards to...") stops any running timer on that card, so a forgotten timer never keeps counting after the work is done.
 
