@@ -2863,6 +2863,16 @@ assert_true(str_contains($src, "? ' selected' : ''"), 'the default target option
 // SortableJS must not start a column drag from the menu
 assert_true(str_contains($src, "filter: '.column-menu'"), 'column drag is filtered from the menu');
 
+// Column drag needs the same touch guard as cards and project cards.
+$columnSortableFn = substr($src, strpos($src, "const boardEl = document.getElementById('board')"));
+$columnSortableFn = substr($columnSortableFn, 0, strpos($columnSortableFn, "document.querySelectorAll('.column-cards')"));
+assert_true(str_contains($columnSortableFn, 'this._columnSortable.destroy()'), 'column sortable is destroyed before re-render');
+assert_true(str_contains($columnSortableFn, 'delay: 500'), 'column drag waits before starting on touch');
+assert_true(str_contains($columnSortableFn, 'delayOnTouchOnly: true'), 'column drag delay applies only to touch');
+assert_true(str_contains($columnSortableFn, 'touchStartThreshold: 5'), 'column drag tolerates a small finger movement');
+assert_true(str_contains($columnSortableFn, 'scroll: true'), 'column drag auto-scrolls the board');
+assert_true(str_contains($src, '.column.sortable-chosen'), 'column chosen state has a style');
+
 // ─── COLUMN COUNTS ───────────────────────────────────────
 section('Column Counts');
 

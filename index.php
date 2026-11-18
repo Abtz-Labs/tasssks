@@ -4468,12 +4468,24 @@ $isGuestRequest = isset($_GET['guest']);
       max-height: 100%;
     }
 
+    .column.sortable-ghost {
+      opacity: 0.4;
+    }
+
+    .column.sortable-chosen {
+      box-shadow: var(--shadow-lg);
+      z-index: 10;
+    }
+
     .column-header {
       padding: 12px 16px;
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     .column-header h3 {
@@ -7818,12 +7830,28 @@ $isGuestRequest = isset($_GET['guest']);
           }
           const boardEl = document.getElementById('board');
           if (boardEl) {
-            new Sortable(boardEl, {
+            // The board element survives re-renders. Destroy the old instance,
+            // otherwise every render adds another drag handler and touch drags
+            // fight each other.
+            if (this._columnSortable) this._columnSortable.destroy();
+            this._columnSortable = new Sortable(boardEl, {
               animation: 150,
               handle: '.column-header',
               filter: '.column-menu',
               draggable: '.column:not(.column-fixed)',
               ghostClass: 'sortable-ghost',
+              chosenClass: 'sortable-chosen',
+              // Same mobile guard as cards and project cards: a swipe on the
+              // board must scroll it. The drag only starts after a short hold.
+              delay: 500,
+              delayOnTouchOnly: true,
+              touchStartThreshold: 5,
+              scroll: true,
+              scrollSensitivity: 80,
+              scrollSpeed: 15,
+              bubbleScroll: true,
+              onChoose: () => document.body.classList.add('sortable-drag-active'),
+              onUnchoose: () => document.body.classList.remove('sortable-drag-active'),
               onEnd: () => {
                 const order = [...boardEl.querySelectorAll('.column')].map(el => el.dataset.id);
                 this.api('reorder_columns', {
